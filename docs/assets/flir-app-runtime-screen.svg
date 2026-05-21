@@ -1,0 +1,190 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" role="img" aria-labelledby="title desc">
+  <title id="title">FLIR thermal app expected landscape runtime screen</title>
+  <desc id="desc">Mockup of the Waveshare 480 by 320 landscape touch screen with 262K color output, showing live thermal viewport, status bar, temperature readouts, hot and cold spot markers, palette scale, and controls including orientation rotation.</desc>
+  <defs>
+    <style>
+      .page { fill: #f7f8fb; }
+      .device { fill: #111827; }
+      .screen { fill: #0f172a; }
+      .panel { fill: #172033; }
+      .small { font: 14px Arial, sans-serif; fill: #cbd5e1; }
+      .tiny { font: 12px Arial, sans-serif; fill: #94a3b8; }
+      .title { font: 700 34px Arial, sans-serif; fill: #334155; }
+      .label { font: 700 14px Arial, sans-serif; fill: #f8fafc; }
+      .button { fill: #27364f; stroke: #475569; stroke-width: 1.5; }
+      .buttonText { font: 700 15px Arial, sans-serif; fill: #e5e7eb; }
+      .line { fill: none; stroke: #0ea5e9; stroke-width: 2.75; stroke-linecap: round; stroke-linejoin: round; }
+      .line-left { fill: none; stroke: #f97316; stroke-width: 2.75; stroke-linecap: round; stroke-linejoin: round; }
+      .callout { font: 16px Arial, sans-serif; fill: #334155; }
+      .calloutTitle { font: 700 18px Arial, sans-serif; fill: #111827; }
+      .hot { stroke: #fffbeb; stroke-width: 3; fill: none; }
+      .cold { stroke: #dbeafe; stroke-width: 3; fill: none; }
+    </style>
+    <linearGradient id="thermal" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.18" stop-color="#1e3a8a"/>
+      <stop offset="0.36" stop-color="#2563eb"/>
+      <stop offset="0.52" stop-color="#16a34a"/>
+      <stop offset="0.66" stop-color="#facc15"/>
+      <stop offset="0.82" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="palette" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0" stop-color="#111827"/>
+      <stop offset="0.22" stop-color="#1e40af"/>
+      <stop offset="0.44" stop-color="#16a34a"/>
+      <stop offset="0.64" stop-color="#facc15"/>
+      <stop offset="0.82" stop-color="#f97316"/>
+      <stop offset="1" stop-color="#fef3c7"/>
+    </linearGradient>
+    <radialGradient id="hotBlob" cx="0.62" cy="0.36" r="0.36">
+      <stop offset="0" stop-color="#fef3c7"/>
+      <stop offset="0.18" stop-color="#f97316"/>
+      <stop offset="0.45" stop-color="#dc2626"/>
+      <stop offset="0.72" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#111827"/>
+    </radialGradient>
+    <radialGradient id="warmBlob" cx="0.28" cy="0.68" r="0.32">
+      <stop offset="0" stop-color="#facc15"/>
+      <stop offset="0.28" stop-color="#16a34a"/>
+      <stop offset="0.65" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#111827"/>
+    </radialGradient>
+  </defs>
+
+  <rect class="page" width="1120" height="760"/>
+  <text class="title" x="560" y="50" text-anchor="middle">Expected FLIR App Runtime Screen</text>
+  <text class="callout" x="560" y="76" text-anchor="middle">
+    <tspan x="560" dy="0">Default landscape orientation on the Waveshare 3.5B built-in 480x320 touch LCD</tspan>
+    <tspan x="560" dy="20">262K-color render target</tspan>
+  </text>
+
+  <rect class="device" x="216" y="154" width="560" height="370" rx="30"/>
+  <rect class="screen" x="246" y="184" width="500" height="310" rx="4"/>
+
+  <rect class="panel" x="246" y="184" width="500" height="36"/>
+  <text class="label" x="262" y="207">LIVE</text>
+  <circle cx="304" cy="202" r="5" fill="#22c55e"/>
+  <text class="small" x="330" y="207">8.6 fps</text>
+  <text class="small" x="410" y="207">LAND</text>
+  <text class="small" x="716" y="207" text-anchor="end">CCI OK</text>
+
+  <rect x="246" y="228" width="420" height="208" fill="url(#thermal)"/>
+  <rect x="246" y="228" width="420" height="208" fill="url(#hotBlob)" opacity="0.82"/>
+  <rect x="246" y="228" width="420" height="208" fill="url(#warmBlob)" opacity="0.55"/>
+  <path d="M246 284 C318 254 360 292 413 264 C488 226 558 258 666 240" fill="none" stroke="#fef3c7" stroke-width="2" opacity="0.45"/>
+  <path d="M246 378 C314 344 380 398 443 366 C516 332 590 374 666 338" fill="none" stroke="#93c5fd" stroke-width="2" opacity="0.5"/>
+  <circle class="hot" cx="528" cy="302" r="13"/>
+  <line class="hot" x1="528" y1="284" x2="528" y2="320"/>
+  <line class="hot" x1="510" y1="302" x2="546" y2="302"/>
+  <text class="label" x="552" y="295">
+    <tspan x="552" dy="0">HOT</tspan>
+    <tspan x="552" dy="18">36.8 C</tspan>
+  </text>
+  <circle class="cold" cx="334" cy="392" r="12"/>
+  <line class="cold" x1="334" y1="375" x2="334" y2="409"/>
+  <line class="cold" x1="317" y1="392" x2="351" y2="392"/>
+  <text class="label" x="354" y="385">
+    <tspan x="354" dy="0">COLD</tspan>
+    <tspan x="354" dy="18">23.4 C</tspan>
+  </text>
+
+  <rect x="676" y="228" width="16" height="208" fill="url(#palette)"/>
+  <text class="tiny" x="684" y="223" text-anchor="middle">38 C</text>
+  <text class="tiny" x="684" y="454" text-anchor="middle">22 C</text>
+
+  <rect class="panel" x="704" y="228" width="42" height="208"/>
+  <text class="tiny" x="711" y="250">
+    <tspan x="711" dy="0">CTR</tspan>
+    <tspan class="label" x="711" dy="20">29.7</tspan>
+  </text>
+  <text class="tiny" x="711" y="320">
+    <tspan x="711" dy="0">RNG</tspan>
+    <tspan class="label" x="711" dy="20">AUTO</tspan>
+  </text>
+  <text class="tiny" x="711" y="390">
+    <tspan x="711" dy="0">PAL</tspan>
+    <tspan class="label" x="711" dy="20">IRON</tspan>
+  </text>
+
+  <rect class="button" x="246" y="468" width="92" height="20" rx="5"/>
+  <text class="buttonText" x="292" y="483" text-anchor="middle">PAL</text>
+  <rect class="button" x="348" y="468" width="92" height="20" rx="5"/>
+  <text class="buttonText" x="394" y="483" text-anchor="middle">FFC</text>
+  <rect class="button" x="450" y="468" width="92" height="20" rx="5"/>
+  <text class="buttonText" x="496" y="483" text-anchor="middle">ROT</text>
+  <rect class="button" x="552" y="468" width="92" height="20" rx="5"/>
+  <text class="buttonText" x="598" y="483" text-anchor="middle">CAP</text>
+  <rect class="button" x="654" y="468" width="92" height="20" rx="5"/>
+  <text class="buttonText" x="700" y="483" text-anchor="middle">SETUP</text>
+
+  <path class="line" d="M746 202 H890"/>
+  <text class="calloutTitle" x="905" y="196">Status bar</text>
+  <text class="callout" x="905" y="221">
+    <tspan x="905" dy="0">capture state, frame rate,</tspan>
+    <tspan x="905" dy="20">orientation, CCI status</tspan>
+  </text>
+
+  <path class="line" d="M666 320 H890"/>
+  <text class="calloutTitle" x="905" y="324">Thermal viewport</text>
+  <text class="callout" x="905" y="349">
+    <tspan x="905" dy="0">80x60 Lepton source</tspan>
+    <tspan x="905" dy="20">scaled inside viewer area</tspan>
+  </text>
+
+  <path class="line" d="M684 332 L760 332 L760 388 H890"/>
+  <text class="calloutTitle" x="905" y="388">Palette scale</text>
+  <text class="callout" x="905" y="413">
+    <tspan x="905" dy="0">current auto low/high</tspan>
+    <tspan x="905" dy="20">temperature range</tspan>
+  </text>
+
+  <path class="line" d="M725 398 L820 398 L820 466 H890"/>
+  <text class="calloutTitle" x="905" y="466">Readouts</text>
+  <text class="callout" x="905" y="491">
+    <tspan x="905" dy="0">center temperature,</tspan>
+    <tspan x="905" dy="20">range mode, RGB666 palette</tspan>
+  </text>
+
+  <path class="line-left" d="M334 392 H130"/>
+  <text class="calloutTitle" x="58" y="386">Spot markers</text>
+  <text class="callout" x="58" y="411">
+    <tspan x="58" dy="0">hot/cold tracking</tspan>
+    <tspan x="58" dy="20">over live frames</tspan>
+  </text>
+
+  <path class="line-left" d="M292 488 V548 H240"/>
+  <text class="calloutTitle" x="58" y="530">PAL button</text>
+  <text class="callout" x="58" y="555">
+    <tspan x="58" dy="0">Ironbow, White Hot,</tspan>
+    <tspan x="58" dy="20">Black Hot, Histogram</tspan>
+  </text>
+
+  <path class="line-left" d="M394 488 V624 H240"/>
+  <text class="calloutTitle" x="58" y="606">FFC button</text>
+  <text class="callout" x="58" y="631">
+    <tspan x="58" dy="0">flat-field correction</tspan>
+    <tspan x="58" dy="20">reduces drift and banding</tspan>
+  </text>
+
+  <path class="line" d="M598 488 V548 H890"/>
+  <text class="calloutTitle" x="905" y="530">CAP button</text>
+  <text class="callout" x="905" y="555">
+    <tspan x="905" dy="0">saves raw frame and</tspan>
+    <tspan x="905" dy="20">screen capture to TF</tspan>
+  </text>
+
+  <path class="line" d="M496 488 V624 H890"/>
+  <text class="calloutTitle" x="905" y="606">Orientation button</text>
+  <text class="callout" x="905" y="631">
+    <tspan x="905" dy="0">ROT toggles landscape</tspan>
+    <tspan x="905" dy="20">and portrait layouts</tspan>
+  </text>
+
+  <path class="line-left" d="M246 290 H130"/>
+  <text class="calloutTitle" x="72" y="284">Overlay</text>
+  <text class="callout" x="72" y="309">
+    <tspan x="72" dy="0">minimal text over</tspan>
+    <tspan x="72" dy="20">thermal image</tspan>
+  </text>
+</svg>
