@@ -3,9 +3,11 @@
 ## Phase 1: Electrical Bring-Up
 
 1. Power ESP32-S3 alone and confirm serial logging.
-2. Bring up the built-in 3.5 inch LCD with the Waveshare 3.5B display driver.
+2. Bring up the built-in 3.5 inch AXS15231B QSPI LCD with the Waveshare 3.5B
+   display driver.
 3. Render a solid-color test pattern to the built-in LCD.
-4. Read the built-in capacitive touch controller and print raw/calibrated touch coordinates.
+4. Read the built-in AXS15231B I2C touch controller and print raw/calibrated
+   touch coordinates.
 5. Mount the onboard TF card and run read/write tests.
 6. Add FLIR power and I2C only; scan for CCI address.
 7. Add FLIR VoSPI and attempt packet sync.
@@ -28,9 +30,9 @@ Expected checks:
 
 - Thermal image appears with correct orientation.
 - Landscape is the default orientation after a fresh settings reset.
-- The on-screen orientation button switches between landscape and portrait.
-- The active landscape output is 480x320 and uses the panel's 262K-color path
-  when supported by the display driver.
+- The status-bar orientation label switches between landscape and portrait.
+- The active landscape output is 480x320 and logs the actual display pixel
+  format selected by the AXS15231B QSPI driver.
 - Hot/cold markers follow a warm object.
 - Color scale remains stable enough for practical viewing.
 - UI remains responsive while capture continues.
@@ -41,8 +43,9 @@ Expected checks:
 
 - Touch coordinates map correctly after calibration.
 - Touch does not interfere with LCD drawing.
-- SD writes do not stall Lepton capture.
-- Captures include timestamp or monotonic sequence number.
+- TF-card writes do not stall Lepton capture.
+- First-release captures include a monotonic sequence number. Timestamped names
+  are validated later after RTC or network time is enabled.
 
 ## Phase 5: Stability Test
 

@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" role="img" aria-labelledby="title desc">
   <title id="title">FLIR thermal app expected landscape runtime screen</title>
-  <desc id="desc">Mockup of the Waveshare 480 by 320 landscape touch screen with 262K color output, showing live thermal viewport, status bar, temperature readouts, hot and cold spot markers, palette scale, and controls including orientation rotation.</desc>
+  <desc id="desc">Mockup of the Waveshare 480 by 320 landscape touch screen showing live thermal viewport, status bar orientation toggle, temperature readouts, hot and cold spot markers, palette scale, and controls.</desc>
   <defs>
     <style>
       .page { fill: #f7f8fb; }
@@ -66,7 +66,8 @@
   <text class="label" x="262" y="207">LIVE</text>
   <circle cx="304" cy="202" r="5" fill="#22c55e"/>
   <text class="small" x="330" y="207">8.6 fps</text>
-  <text class="small" x="410" y="207">LAND</text>
+  <rect class="button" x="390" y="191" width="116" height="22" rx="5"/>
+  <text class="buttonText" x="448" y="207" text-anchor="middle">LANDSCAPE</text>
   <text class="small" x="716" y="207" text-anchor="end">CCI OK</text>
 
   <rect x="246" y="228" width="420" height="208" fill="url(#thermal)"/>
@@ -107,16 +108,14 @@
     <tspan class="label" x="711" dy="20">IRON</tspan>
   </text>
 
-  <rect class="button" x="246" y="468" width="92" height="20" rx="5"/>
-  <text class="buttonText" x="292" y="483" text-anchor="middle">PAL</text>
-  <rect class="button" x="348" y="468" width="92" height="20" rx="5"/>
-  <text class="buttonText" x="394" y="483" text-anchor="middle">FFC</text>
-  <rect class="button" x="450" y="468" width="92" height="20" rx="5"/>
-  <text class="buttonText" x="496" y="483" text-anchor="middle">ROT</text>
-  <rect class="button" x="552" y="468" width="92" height="20" rx="5"/>
-  <text class="buttonText" x="598" y="483" text-anchor="middle">CAP</text>
-  <rect class="button" x="654" y="468" width="92" height="20" rx="5"/>
-  <text class="buttonText" x="700" y="483" text-anchor="middle">SETUP</text>
+  <rect class="button" x="246" y="468" width="116" height="20" rx="5"/>
+  <text class="buttonText" x="304" y="483" text-anchor="middle">PAL</text>
+  <rect class="button" x="374" y="468" width="116" height="20" rx="5"/>
+  <text class="buttonText" x="432" y="483" text-anchor="middle">FFC</text>
+  <rect class="button" x="502" y="468" width="116" height="20" rx="5"/>
+  <text class="buttonText" x="560" y="483" text-anchor="middle">CAP</text>
+  <rect class="button" x="630" y="468" width="116" height="20" rx="5"/>
+  <text class="buttonText" x="688" y="483" text-anchor="middle">SETUP</text>
 
   <path class="line" d="M746 202 H890"/>
   <text class="calloutTitle" x="905" y="196">Status bar</text>
@@ -153,32 +152,32 @@
     <tspan x="58" dy="20">over live frames</tspan>
   </text>
 
-  <path class="line-left" d="M292 488 V548 H240"/>
+  <path class="line-left" d="M304 488 V548 H240"/>
   <text class="calloutTitle" x="58" y="530">PAL button</text>
   <text class="callout" x="58" y="555">
     <tspan x="58" dy="0">Ironbow, White Hot,</tspan>
     <tspan x="58" dy="20">Black Hot, Histogram</tspan>
   </text>
 
-  <path class="line-left" d="M394 488 V624 H240"/>
+  <path class="line-left" d="M432 488 V624 H240"/>
   <text class="calloutTitle" x="58" y="606">FFC button</text>
   <text class="callout" x="58" y="631">
     <tspan x="58" dy="0">flat-field correction</tspan>
     <tspan x="58" dy="20">reduces drift and banding</tspan>
   </text>
 
-  <path class="line" d="M598 488 V548 H890"/>
+  <path class="line" d="M560 488 V548 H890"/>
   <text class="calloutTitle" x="905" y="530">CAP button</text>
   <text class="callout" x="905" y="555">
     <tspan x="905" dy="0">saves raw frame and</tspan>
     <tspan x="905" dy="20">screen capture to TF</tspan>
   </text>
 
-  <path class="line" d="M496 488 V624 H890"/>
-  <text class="calloutTitle" x="905" y="606">Orientation button</text>
+  <path class="line" d="M448 213 V624 H890"/>
+  <text class="calloutTitle" x="905" y="606">Orientation status</text>
   <text class="callout" x="905" y="631">
-    <tspan x="905" dy="0">ROT toggles landscape</tspan>
-    <tspan x="905" dy="20">and portrait layouts</tspan>
+    <tspan x="905" dy="0">tap LANDSCAPE to</tspan>
+    <tspan x="905" dy="20">switch to portrait</tspan>
   </text>
 
   <path class="line-left" d="M246 290 H130"/>

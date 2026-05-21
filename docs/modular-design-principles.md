@@ -87,7 +87,7 @@ When adding a device:
    read/write methods.
 4. Register the driver in `Application`.
 5. Add UI/settings/storage integration in separate modules if needed.
-6. Update docs and validation checks for the new device.
+6. Update the board profile, docs, and validation checks for the new device.
 
 ## Review Checklist
 

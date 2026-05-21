@@ -17,19 +17,21 @@ full capture/render/storage app described here is the next implementation stage.
 
 The first complete app screen should prioritize a live thermal viewport with
 only the controls and readouts needed during use: frame status, hot/cold markers,
-center temperature, palette/range state, manual FFC, orientation switching,
-capture to TF card, and a `SETUP` placeholder for future feature/device
-configuration.
+center temperature, palette/range state, manual FFC, status-bar orientation
+switching, capture to TF card, and `SETUP` configuration.
 
-Landscape is the default orientation for this hardware. The UI should include a
-small `ROT` touch button that toggles between landscape and portrait layouts when
-needed. The selected orientation should be saved with other viewer settings so
-the device boots back into the user's last chosen layout.
+Landscape is the default orientation for this hardware. The status bar should
+show the active orientation as a tappable state label: `LANDSCAPE` in landscape
+mode and `PORTRAIT` in portrait mode. Tapping that label toggles layouts. The
+selected orientation should be saved with other viewer settings so the device
+boots back into the user's last chosen layout.
 
 The final render target is the built-in 480x320 landscape display using the
-panel's 262K-color capability. Palette output should use RGB666/18-bit color
-when the display driver supports it; RGB565 should only be used as a documented
-fallback.
+panel's driver-native pixel path. Keep palette calculations internally high
+precision, then let `display_driver` pack to the active AXS15231B QSPI format.
+For this board, RGB565 is the first implementation target unless the selected
+AXS15231B QSPI driver explicitly supports RGB666/262K frame pushes. See
+[Display Driver Design](display-driver-design.md).
 
 The `FFC` button triggers FLIR flat-field correction. FFC lets the Lepton
 recalibrate its sensor offset against a uniform reference, usually the module's
@@ -40,13 +42,26 @@ The `PAL` button cycles thermal visualization styles: Ironbow, White Hot, Black
 Hot, and Histogram. Histogram mode should use the frame distribution to improve
 contrast when the scene has a narrow temperature range.
 
+The `SETUP` button opens an on-device ESP32 setup screen or overlay. See
+[ESP32 Setup Button Design](esp32-setup-button-design.md) for the embedded C++
+settings, validation, persistence, and capture-path contract.
+
+![ESP32 setup screen flow](assets/esp32-setup-screen-flow.svg)
+
+When `CAP` is pressed, capture storage must use the active save path from the
+runtime configuration last saved through `SETUP`. The capture module should read
+that setting at capture time instead of caching a separate path, so setup changes
+apply immediately.
+
 ## System Architecture Overview
 
 The full firmware should be split into shared board support and real FLIR code:
 
 - `include/pin_config.h`: board pin assignments for LCD, touch, SD, and FLIR.
-- `include/display_driver.h` and `src/display_driver.cpp`: Waveshare
-  ESP32-S3-Touch-LCD-3.5B built-in LCD/touch configuration.
+- `include/board/` and `src/board/`: Waveshare display, touch, TF-card, and
+  backlight configuration. For this 3.5B board, use the AXS15231B QSPI display
+  path defined in [Waveshare 3.5B Board Profile](waveshare-35b-board-profile.md)
+  and [Display Driver Design](display-driver-design.md).
 - `src/flir/`: real Lepton acquisition, image processing, rendering, touch capture, and SD saving.
 - `src/main.cpp`: initializes board support and runs the FLIR application loop.
 
@@ -58,7 +73,7 @@ The LCD, touch controller, backlight, and TF card are built into the Waveshare
 board. The firmware should use the 3.5B board support definitions for display,
 touch, and storage.
 
-The onboard TF-card path is still a shared-resource concern. SD writes should
+The onboard TF-card path is still a shared-resource concern. TF-card writes should
 happen outside the tight Lepton capture window and should not block the capture
 task.
 
@@ -90,7 +105,9 @@ Avoid wiring Lepton VoSPI to `GPIO1` through `GPIO6` or `GPIO12` because those
 pins are already used by the built-in LCD path on this board. Also avoid
 `GPIO9`, `GPIO10`, and `GPIO11` for FLIR if onboard TF-card support is enabled.
 
-The current code implements VoSPI frame reads. CCI control over I2C is reserved by pin map and can be added later for telemetry mode, FFC, and camera configuration.
+The current code initializes the FLIR VoSPI and CCI pin paths for bring-up.
+VoSPI frame reads and CCI control logic are target implementation work for
+thermal capture, telemetry mode, FFC, and camera configuration.
 Because breakout v1.4 does not expose dedicated power-enable or reset pins, the
 firmware leaves `FLIR_POWER_ENABLE` and `FLIR_RESET` disabled in
 `include/pin_config.h`.
@@ -143,7 +160,9 @@ ImageProcessor::applyPalette()
   - selectable at runtime with Serial command "p"
         |
         v
-RGB666/262K-color render buffer, viewport-sized
+driver-native render buffer, viewport-sized
+  - RGB565 first implementation target
+  - RGB666 only if the selected AXS15231B QSPI driver supports it
         |
         v
 Display::pushImage()
@@ -154,32 +173,32 @@ Waveshare 3.5B LCD with min/max/center overlay
 
 ## Build Modes
 
-Real FLIR mode is now the project default:
+The bring-up firmware is the current default build:
 
 ```bash
 pio run
 ```
 
-Upload real FLIR mode:
+Upload the current bring-up firmware:
 
 ```bash
 pio run --target upload
 ```
 
-The bring-up firmware is selected by the default environment:
+The default environment is:
 
 ```bash
 pio run -e waveshare-esp32-s3-touch-lcd-35b-flir
 ```
 
-In real FLIR mode, the Serial Monitor accepts:
+Planned real FLIR mode should accept these Serial Monitor commands:
 
 ```text
 p  cycle palette: Ironbow -> White Hot -> Black Hot -> Histogram
-r  rotate orientation: landscape -> portrait -> landscape
+orientation status label  toggle landscape <-> portrait
 ```
 
-## API Reference
+## Proposed Module Contracts
 
 ### `ImageProcessor::automaticGainControl`
 
@@ -233,10 +252,10 @@ void applyPalette(const uint8_t* normalized,
 ```
 
 Converts 8-bit intensity values to palette-colored pixels for the LCD. The
-preferred display pixel format is RGB666/18-bit so the 262K-color panel is used
-properly. If the selected Waveshare display driver only accepts RGB565 buffers,
-perform that conversion in the display layer and keep the palette source at
-higher precision.
+thermal palette should stay internally high precision. The display layer performs
+the final packing to the active AXS15231B QSPI pixel format, which is expected to
+be RGB565 for the first implementation unless RGB666 is verified in the selected
+driver.
 
 - `normalized`: input 8-bit image.
 - `pixelCount`: number of pixels.
@@ -277,21 +296,25 @@ bool saveCapture(const uint16_t* raw14,
                  uint16_t bitmapHeight);
 ```
 
-Saves two files to `/flir` on the SD card:
+Saves two files under the active setup save path on the TF card. The default
+path is `/flir`:
 
 - `frame_00001.raw`: raw radiometric 14-bit values stored as little-endian `uint16_t`.
 - `frame_00001.bmp`: 8-bit grayscale BMP generated from the processed display buffer.
 
 Returns `true` only if both files are written successfully.
 
-## Touch Capture Behavior
+## Capture Button Behavior
 
-The app attaches an interrupt to `TOUCH_IRQ`. The ISR only sets a `volatile` flag. The main loop consumes that flag with debounce logic, so SD writes and display updates never run inside interrupt context.
+The app receives debounced touch events from the built-in AXS15231B I2C
+`touch_driver`. The UI layer maps screen coordinates to buttons such as `CAP`.
+Storage writes and display updates must remain outside interrupt context.
 
 When tapped:
 
 1. The current frame is paused.
-2. The raw 14-bit frame and 8-bit BMP are written to SD.
+2. The raw 14-bit frame and 8-bit BMP are written to the configured TF-card
+   path.
 3. The frozen frame remains on screen.
 4. A second tap resumes live rendering.
 
@@ -326,11 +349,11 @@ Suggested checks:
 - Lower `kSpiFrequency` in `lepton_driver.h` if wiring is long or noisy.
 - Add CCI initialization once the module is connected if telemetry/radiometric mode needs explicit configuration.
 
-### SD Card Write Failures
+### TF Card Write Failures
 
 Symptoms:
 
-- Serial prints `SD error: failed to mount card`.
+- Serial prints `TF card error: failed to mount card`.
 - Serial prints `unable to open ... for BMP write`.
 - Capture tap pauses the display but no files appear on the card.
 
@@ -352,5 +375,5 @@ What the firmware does:
 Suggested checks:
 
 - Verify `pin_config.h` matches the Waveshare 3.5B board support package.
-- Use a known-good FAT32 microSD card.
+- Use a known-good FAT32 TF card/microSD card.
 - Temporarily reduce SD SPI speed in `CaptureStorage::begin()`.

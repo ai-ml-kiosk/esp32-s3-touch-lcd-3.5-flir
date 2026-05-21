@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720" role="img" aria-labelledby="title desc">
+  <title id="title">ESP32 on-device setup screen flow</title>
+  <desc id="desc">Diagram showing the ESP32 FLIR viewer SETUP button opening an on-device setup screen for date format, time format, locale, save path, save, and cancel. CAP later writes to the configured TF-card path.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .device { fill: #111827; }
+      .screen { fill: #0f172a; }
+      .panel { fill: #172033; stroke: #334155; stroke-width: 2; }
+      .setup { fill: #ffffff; stroke: #0ea5e9; stroke-width: 3; }
+      .field { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 2; }
+      .button { fill: #27364f; stroke: #64748b; stroke-width: 2; }
+      .primary { fill: #0ea5e9; stroke: #0369a1; stroke-width: 2; }
+      .title { font: 700 32px Arial, sans-serif; fill: #334155; }
+      .label { font: 700 16px Arial, sans-serif; fill: #0f172a; }
+      .text { font: 15px Arial, sans-serif; fill: #334155; }
+      .white { font: 700 15px Arial, sans-serif; fill: #f8fafc; }
+      .muted { font: 14px Arial, sans-serif; fill: #64748b; }
+      .line { fill: none; stroke: #f97316; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow); }
+      .line-blue { fill: none; stroke: #0ea5e9; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrowBlue); }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#f97316"/>
+    </marker>
+    <marker id="arrowBlue" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#0ea5e9"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1080" height="720"/>
+  <text class="title" x="540" y="50" text-anchor="middle">ESP32 SETUP Button Flow</text>
+
+  <rect class="device" x="70" y="112" width="470" height="320" rx="24"/>
+  <rect class="screen" x="96" y="142" width="418" height="260" rx="4"/>
+  <rect class="panel" x="96" y="142" width="418" height="32"/>
+  <text class="white" x="112" y="164">LIVE</text>
+  <rect class="button" x="376" y="148" width="116" height="22" rx="5"/>
+  <text class="white" x="434" y="164" text-anchor="middle">LANDSCAPE</text>
+
+  <rect x="112" y="190" width="300" height="154" fill="#1e3a8a" stroke="#475569"/>
+  <text class="white" x="262" y="270" text-anchor="middle">Thermal Viewer</text>
+  <rect class="button" x="112" y="364" width="92" height="24" rx="5"/>
+  <text class="white" x="158" y="381" text-anchor="middle">PAL</text>
+  <rect class="button" x="214" y="364" width="92" height="24" rx="5"/>
+  <text class="white" x="260" y="381" text-anchor="middle">FFC</text>
+  <rect class="button" x="316" y="364" width="92" height="24" rx="5"/>
+  <text class="white" x="362" y="381" text-anchor="middle">CAP</text>
+  <rect class="primary" x="418" y="364" width="82" height="24" rx="5"/>
+  <text class="white" x="459" y="381" text-anchor="middle">SETUP</text>
+
+  <path class="line" d="M500 376 C588 376 562 124 640 124"/>
+
+  <rect class="setup" x="640" y="100" width="370" height="410" rx="14"/>
+  <text class="label" x="664" y="134">On-device Setup Screen</text>
+  <text class="muted" x="664" y="158">Thermal controls paused while setup is active</text>
+
+  <text class="text" x="664" y="198">Date format</text>
+  <rect class="field" x="772" y="178" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="199">YYYY-MM-DD</text>
+
+  <text class="text" x="664" y="244">Time format</text>
+  <rect class="field" x="772" y="224" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="245">HH:mm:ss</text>
+
+  <text class="text" x="664" y="290">Locale/region</text>
+  <rect class="field" x="772" y="270" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="291">en_AU</text>
+
+  <text class="text" x="664" y="336">Save path</text>
+  <rect class="field" x="772" y="316" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="337">/flir</text>
+
+  <rect class="field" x="664" y="378" width="126" height="34" rx="6"/>
+  <text class="text" x="727" y="400" text-anchor="middle">Cancel</text>
+  <rect class="primary" x="842" y="378" width="126" height="34" rx="6"/>
+  <text class="white" x="905" y="400" text-anchor="middle">Save</text>
+
+  <text class="muted" x="664" y="450">
+    <tspan x="664" dy="0">Save validates the TF-card path, persists settings,</tspan>
+    <tspan x="664" dy="20">and returns to the thermal viewer.</tspan>
+  </text>
+
+  <path class="line-blue" d="M842 395 C732 550 492 538 362 388"/>
+  <text class="label" x="178" y="552">Capture path contract</text>
+  <text class="text" x="178" y="580">
+    <tspan x="178" dy="0">CAP reads Settings.savePath at press time.</tspan>
+    <tspan x="178" dy="22">Default before setup: /flir on TF card.</tspan>
+    <tspan x="178" dy="22">No host-computer paths are used on ESP32.</tspan>
+  </text>
+</svg>
