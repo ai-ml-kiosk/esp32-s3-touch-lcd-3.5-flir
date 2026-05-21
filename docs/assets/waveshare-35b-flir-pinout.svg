@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="820" viewBox="0 0 1120 820" role="img" aria-labelledby="title desc">
   <title id="title">Waveshare ESP32-S3-Touch-LCD-3.5B FLIR connection pinout</title>
-  <desc id="desc">Annotated 2x16 expansion header showing FLIR Lepton breakout connections on GPIO38, GPIO39, GPIO40, GPIO41, GPIO7, GPIO8, 3V3, and GND.</desc>
+  <desc id="desc">Annotated 2x16 expansion header showing FLIR Lepton breakout connections on GPIO21, GPIO40, GPIO41, GPIO42, GPIO17, GPIO18, 3V3, and GND.</desc>
   <defs>
     <style>
       .bg { fill: #f7f8fb; }
@@ -79,12 +79,12 @@
   <g>
     <rect class="power" x="130" y="204" width="290" height="22" rx="4"/><text class="label" x="395" y="221" text-anchor="end">BAT</text>
     <rect class="ground" x="130" y="228" width="290" height="22" rx="4"/><text class="label" x="395" y="245" text-anchor="end">GND</text>
-    <rect class="gpio" x="130" y="252" width="290" height="22" rx="4"/><text class="label" x="395" y="269" text-anchor="end">GPIO21</text>
-    <rect class="flir" x="130" y="276" width="290" height="22" rx="4"/><text class="callout" x="395" y="293" text-anchor="end">GPIO38 - FLIR CLK</text>
-    <rect class="flir" x="130" y="300" width="290" height="22" rx="4"/><text class="callout" x="395" y="317" text-anchor="end">GPIO39 - FLIR MISO</text>
-    <rect class="flir" x="130" y="324" width="290" height="22" rx="4"/><text class="callout" x="395" y="341" text-anchor="end">GPIO40 - FLIR MOSI</text>
-    <rect class="flir" x="130" y="348" width="290" height="22" rx="4"/><text class="callout" x="395" y="365" text-anchor="end">GPIO41 - FLIR CS</text>
-    <rect class="gpio" x="130" y="372" width="290" height="22" rx="4"/><text class="label" x="395" y="389" text-anchor="end">GPIO42</text>
+    <rect class="flir" x="130" y="252" width="290" height="22" rx="4"/><text class="callout" x="395" y="269" text-anchor="end">GPIO21 - FLIR CLK</text>
+    <rect class="gpio" x="130" y="276" width="290" height="22" rx="4"/><text class="label" x="395" y="293" text-anchor="end">GPIO38</text>
+    <rect class="gpio" x="130" y="300" width="290" height="22" rx="4"/><text class="label" x="395" y="317" text-anchor="end">GPIO39</text>
+    <rect class="flir" x="130" y="324" width="290" height="22" rx="4"/><text class="callout" x="395" y="341" text-anchor="end">GPIO40 - FLIR MISO</text>
+    <rect class="flir" x="130" y="348" width="290" height="22" rx="4"/><text class="callout" x="395" y="365" text-anchor="end">GPIO41 - FLIR MOSI</text>
+    <rect class="flir" x="130" y="372" width="290" height="22" rx="4"/><text class="callout" x="395" y="389" text-anchor="end">GPIO42 - FLIR CS</text>
     <rect class="gpio" x="130" y="396" width="290" height="22" rx="4"/><text class="label" x="395" y="413" text-anchor="end">GPIO45</text>
     <rect class="gpio" x="130" y="420" width="290" height="22" rx="4"/><text class="label" x="395" y="437" text-anchor="end">GPIO46</text>
     <rect class="gpio" x="130" y="444" width="290" height="22" rx="4"/><text class="label" x="395" y="461" text-anchor="end">GPIO47</text>
@@ -104,19 +104,20 @@
     <rect class="gpio" x="700" y="300" width="290" height="22" rx="4"/><text class="label" x="725" y="317">GPIO11</text>
     <rect class="gpio" x="700" y="324" width="290" height="22" rx="4"/><text class="label" x="725" y="341">GPIO10</text>
     <rect class="gpio" x="700" y="348" width="290" height="22" rx="4"/><text class="label" x="725" y="365">GPIO9</text>
-    <rect class="gpio" x="700" y="372" width="290" height="22" rx="4"/><text class="label" x="725" y="389">GPIO17</text>
-    <rect class="gpio" x="700" y="396" width="290" height="22" rx="4"/><text class="label" x="725" y="413">GPIO18</text>
+    <rect class="flir" x="700" y="372" width="290" height="22" rx="4"/><text class="callout" x="725" y="389">GPIO17 - FLIR SDA</text>
+    <rect class="flir" x="700" y="396" width="290" height="22" rx="4"/><text class="callout" x="725" y="413">GPIO18 - FLIR SCL</text>
     <rect class="key" x="700" y="420" width="290" height="22" rx="4"/><text class="label" x="725" y="437">BOOT(GPIO0)</text>
     <rect class="key" x="700" y="444" width="290" height="22" rx="4"/><text class="label" x="725" y="461">RST</text>
     <rect class="key" x="700" y="468" width="290" height="22" rx="4"/><text class="label" x="725" y="485">PWR</text>
-    <rect class="flir" x="700" y="492" width="290" height="22" rx="4"/><text class="callout" x="725" y="509">SCL(GPIO7) - FLIR SCL</text>
-    <rect class="flir" x="700" y="516" width="290" height="22" rx="4"/><text class="callout" x="725" y="533">SDA(GPIO8) - FLIR SDA</text>
+    <rect class="i2c" x="700" y="492" width="290" height="22" rx="4"/><text class="label" x="725" y="509">SCL(GPIO7) - BOARD I2C</text>
+    <rect class="i2c" x="700" y="516" width="290" height="22" rx="4"/><text class="label" x="725" y="533">SDA(GPIO8) - BOARD I2C</text>
     <rect class="ground" x="700" y="540" width="290" height="22" rx="4"/><text class="label" x="725" y="557">GND - FLIR GND</text>
     <rect class="power" x="700" y="564" width="290" height="22" rx="4"/><text class="label" x="725" y="581">3V3 - FLIR VIN</text>
   </g>
 
-  <rect x="76" y="660" width="968" height="104" rx="18" fill="#fff" stroke="#cbd5e1"/>
+  <rect x="76" y="660" width="968" height="128" rx="18" fill="#fff" stroke="#cbd5e1"/>
   <text class="note" x="104" y="694">Recommended FLIR Lepton 2.5 breakout v1.4 connections:</text>
-  <text class="note" x="104" y="724">VoSPI: CLK GPIO38, MISO GPIO39, MOSI GPIO40, CS GPIO41. CCI/I2C: SCL GPIO7, SDA GPIO8.</text>
-  <text class="note" x="104" y="754">Power: connect breakout VIN/VCC to 3V3 and GND to GND. Breakout v1.4 PWR_EN and RST are not connected.</text>
+  <text class="note" x="104" y="724">VoSPI: CLK GPIO21, MISO GPIO40, MOSI GPIO41, CS GPIO42. CCI/I2C: SDA GPIO17, SCL GPIO18.</text>
+  <text class="note" x="104" y="754">Power: connect breakout VIN/VCC to 3V3 and GND to GND. Leave GPIO7/GPIO8 for board I2C.</text>
+  <text class="note" x="104" y="780">Breakout v1.4 does not expose separate PWR_EN or RST pins.</text>
 </svg>

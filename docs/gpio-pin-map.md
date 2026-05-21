@@ -12,14 +12,14 @@ external LCD/touch GPIO map is intentionally removed.
 ## Board Header Placement
 
 Use the 2x16 expansion header and/or camera FPC nets exposed by the 3.5B board.
-The proposed FLIR wiring uses GPIOs that Waveshare routes to the camera/expansion
-area and leaves the built-in LCD/touch GPIOs alone.
+The confirmed FLIR wiring uses independent expansion GPIOs and leaves the
+built-in LCD/touch, TF-card, and board I2C GPIOs alone.
 
 | Board area | Device signals |
 |---|---|
 | Built-in LCD/touch | Do not wire externally. LCD/touch/backlight are already routed on the PCB. |
-| 2x16 expansion header / camera nets `GPIO38`, `GPIO39`, `GPIO40`, `GPIO41` | Dedicated FLIR VoSPI SCLK, MISO, MOSI, CS. |
-| Exposed board I2C `ESP_SDA`, `ESP_SCL` | FLIR CCI/I2C SDA and SCL. |
+| 2x16 expansion header nets `GPIO21`, `GPIO40`, `GPIO41`, `GPIO42` | Dedicated FLIR VoSPI SCLK, MISO, MOSI, CS. |
+| 2x16 expansion header nets `GPIO17`, `GPIO18` | Dedicated FLIR CCI/I2C SDA and SCL. |
 | Power rails | Use `3V3` for the FLIR breakout and common `GND`. |
 
 ## Avoided Pins
@@ -34,7 +34,9 @@ Avoid these pins for external FLIR wiring unless the board schematic is changed:
 - `GPIO43`, `GPIO44`: commonly used for UART logging/programming.
 - `GPIO9`, `GPIO10`, `GPIO11`: routed to the onboard TF-card/expansion SPI nets.
   Do not use them for FLIR if TF-card support is enabled.
-- `GPIO7`, `GPIO8`: shared board I2C. Use them for FLIR CCI only, not VoSPI.
+- `GPIO7`, `GPIO8`: board I2C path. Do not use them for FLIR in this build.
+- `GPIO38`, `GPIO39`: avoided after bring-up because they behaved poorly as
+  external FLIR VoSPI pins on this board/configuration.
 - Any board-specific flash/PSRAM pins.
 
 ## Proposed Bus Summary
@@ -43,12 +45,12 @@ Avoid these pins for external FLIR wiring unless the board schematic is changed:
 |---|---:|---|
 | Built-in LCD/touch | Board support pins | Use Waveshare 3.5B display/touch drivers; no external GPIO wiring. |
 | Onboard TF card | Board support pins | Use Waveshare/firmware SD configuration; do not assign these pins to FLIR. |
-| FLIR SPI SCLK | `GPIO38` | Dedicated Lepton VoSPI clock. Exposed as a camera/expansion net. |
-| FLIR SPI MISO | `GPIO39` | Lepton VoSPI data into ESP32-S3. |
-| FLIR SPI MOSI | `GPIO40` | Dedicated Lepton SPI MOSI connection. |
-| FLIR SPI CS | `GPIO41` | Dedicated Lepton chip-select. |
-| FLIR I2C SDA | `GPIO8` | Shared board I2C/CCI data. |
-| FLIR I2C SCL | `GPIO7` | Shared board I2C/CCI clock. |
+| FLIR SPI SCLK | `GPIO21` | Dedicated Lepton VoSPI clock. |
+| FLIR SPI MISO | `GPIO40` | Lepton VoSPI data into ESP32-S3. |
+| FLIR SPI MOSI | `GPIO41` | Dedicated Lepton SPI MOSI connection. |
+| FLIR SPI CS | `GPIO42` | Dedicated Lepton chip-select. |
+| FLIR I2C SDA | `GPIO17` | Dedicated CCI data. |
+| FLIR I2C SCL | `GPIO18` | Dedicated CCI clock. |
 
 ## FLIR Lepton 2.5 Breakout v1.4 Wiring
 
@@ -58,19 +60,19 @@ separate `PWR_EN` or `RST` pins to wire to the ESP32-S3.
 
 Important naming note: many FLIR Lepton breakout boards label the video SPI
 clock as `CLK` instead of `SCK` or `SCLK`. That `CLK` pin is **not** the same as
-I2C `SCL`. Use `GPIO38` for the breakout `CLK` pin, and use `GPIO7` only for the
-I2C/CCI `SCL` pin.
+I2C `SCL`. Use `GPIO21` for the breakout `CLK` pin, and use `GPIO18` only for
+the I2C/CCI `SCL` pin.
 
 | FLIR breakout signal | ESP32-S3 GPIO | Direction | Notes |
 |---|---:|---|---|
 | VIN / VCC | 3.3V | Power | Confirm breakout voltage requirements. |
 | GND | GND | Power | Common ground. |
-| CLK / SPI SCK / SCLK | `GPIO38` | ESP32-S3 to FLIR | Dedicated VoSPI video clock. This is the breakout `CLK` pin. |
-| SPI MISO / VoSPI data | `GPIO39` | FLIR to ESP32-S3 | Thermal packet stream. |
-| SPI MOSI | `GPIO40` | ESP32-S3 to FLIR | Dedicated Lepton SPI MOSI connection. |
-| SPI CS | `GPIO41` | ESP32-S3 to FLIR | Dedicated chip-select. |
-| SDA / CCI SDA | `GPIO8` | Bidirectional | Shared board I2C data; verify pullups on the combined bus. |
-| SCL / CCI SCL | `GPIO7` | ESP32-S3 to FLIR | Shared board I2C clock; verify pullups on the combined bus. |
+| CLK / SPI SCK / SCLK | `GPIO21` | ESP32-S3 to FLIR | Dedicated VoSPI video clock. This is the breakout `CLK` pin. |
+| SPI MISO / VoSPI data | `GPIO40` | FLIR to ESP32-S3 | Thermal packet stream. |
+| SPI MOSI | `GPIO41` | ESP32-S3 to FLIR | Dedicated Lepton SPI MOSI connection. |
+| SPI CS | `GPIO42` | ESP32-S3 to FLIR | Dedicated chip-select. |
+| SDA / CCI SDA | `GPIO17` | Bidirectional | Dedicated CCI data. |
+| SCL / CCI SCL | `GPIO18` | ESP32-S3 to FLIR | Dedicated CCI clock. |
 | RESET / RST / EN | Not connected | - | Breakout v1.4 does not expose this pin. |
 | PWR_EN | Not connected | - | Breakout v1.4 does not expose this pin. |
 
@@ -80,12 +82,12 @@ Quick breakout-label mapping:
 |---|---:|
 | `VIN` / `VCC` | Header `3V3`, pin 31 or pin 32 |
 | `GND` | Header `GND`, pin 29 or pin 30 |
-| `CLK` | `GPIO38`, header pin 7 |
-| `SCL` | `GPIO7`, header pin 26 |
-| `SDA` | `GPIO8`, header pin 28 |
-| `MISO` / `DATA` / `VoSPI` | `GPIO39`, header pin 9 |
-| `MOSI` | `GPIO40`, header pin 11 |
-| `CS` | `GPIO41`, header pin 13 |
+| `CLK` | `GPIO21`, header pin 5 |
+| `SCL` | `GPIO18`, header pin 18 |
+| `SDA` | `GPIO17`, header pin 16 |
+| `MISO` / `DATA` / `VoSPI` | `GPIO40`, header pin 11 |
+| `MOSI` | `GPIO41`, header pin 13 |
+| `CS` | `GPIO42`, header pin 15 |
 
 ## Alternate Pin Strategy
 

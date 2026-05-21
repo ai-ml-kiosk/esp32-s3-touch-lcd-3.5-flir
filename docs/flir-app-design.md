@@ -82,32 +82,37 @@ separate SPI bus for VoSPI so the high-rate thermal stream does not contend with
 LCD rendering:
 
 ```text
-FLIR CLK/SCLK GPIO38
-FLIR MOSI GPIO40
-FLIR MISO GPIO39
-FLIR CS   GPIO41
-CCI SDA   GPIO8
-CCI SCL   GPIO7
+FLIR CLK/SCLK GPIO21
+FLIR MOSI GPIO41
+FLIR MISO GPIO40
+FLIR CS   GPIO42
+CCI SDA   GPIO17
+CCI SCL   GPIO18
 PWR_EN    not connected on breakout v1.4
 RST       not connected on breakout v1.4
 ```
 
 On many Lepton breakout boards, the pin labeled `CLK` is the VoSPI/SPI clock.
-Wire that `CLK` pin to `GPIO38`. Do not confuse it with `SCL`: `SCL` is the
-I2C/CCI control clock and should go to `GPIO7`. `SDA` is the I2C/CCI data line
-and should go to `GPIO8`.
+Wire that `CLK` pin to `GPIO21`. Do not confuse it with `SCL`: `SCL` is the
+I2C/CCI control clock and should go to `GPIO18`. `SDA` is the I2C/CCI data line
+and should go to `GPIO17`.
 
-For this build, wire FLIR `MOSI` to `GPIO40` as a required Lepton SPI signal.
+For this build, wire FLIR `MOSI` to `GPIO41` as a required Lepton SPI signal.
 The firmware initializes the dedicated FLIR SPI bus with SCLK, MISO, MOSI, and
 CS so the breakout wiring matches the configured bus exactly.
 
 Avoid wiring Lepton VoSPI to `GPIO1` through `GPIO6` or `GPIO12` because those
 pins are already used by the built-in LCD path on this board. Also avoid
 `GPIO9`, `GPIO10`, and `GPIO11` for FLIR if onboard TF-card support is enabled.
+Keep `GPIO7` and `GPIO8` for board I2C, and avoid `GPIO38`/`GPIO39` for this
+FLIR build because the working bench-tested map moved VoSPI to
+`GPIO21/40/41/42`.
 
-The current code initializes the FLIR VoSPI and CCI pin paths for bring-up.
-VoSPI frame reads and CCI control logic are target implementation work for
-thermal capture, telemetry mode, FFC, and camera configuration.
+The current code initializes the FLIR VoSPI and CCI pin paths and reads real
+Lepton 2.x VoSPI frames through `LeptonVospi`. CCI is used during startup to
+detect the Lepton at `0x2A` and issue an OEM reboot command before VoSPI begins,
+which makes ESP32 reset-button restarts more reliable when the Lepton remains
+powered.
 Because breakout v1.4 does not expose dedicated power-enable or reset pins, the
 firmware leaves `FLIR_POWER_ENABLE` and `FLIR_RESET` disabled in
 `include/pin_config.h`.
@@ -118,7 +123,7 @@ firmware leaves `FLIR_POWER_ENABLE` and `FLIR_RESET` disabled in
 Lepton VoSPI packets
         |
         v
-LeptonDriver::readFrame()
+LeptonVospi::readFrame()
   - reads 60 packets
   - rejects discard packets
   - detects packet order loss
@@ -273,7 +278,7 @@ SpotTemperatures calculateSpotTemperatures(const uint16_t* raw14,
 
 Calculates minimum, maximum, and center-pixel temperatures. Raw Lepton values are converted using `C = raw * 0.01 - 273.15`, which matches radiometric Kelvin centi-degree output.
 
-### `LeptonDriver::readFrame`
+### `LeptonVospi::readFrame`
 
 ```cpp
 LeptonStatus readFrame(uint16_t* raw14, size_t pixelCount);
@@ -285,6 +290,9 @@ Reads one 80x60 Lepton frame over VoSPI.
 - Returns `Timeout` if a full frame is not received within the frame window.
 - Returns `SyncLost` if discard packets or packet ordering indicate VoSPI sync loss.
 - Returns `SpiError` for invalid buffers.
+
+The default build uses real VoSPI capture. A synthetic thermal frame source is
+kept only as a compile-time bring-up fallback with `FLIR_USE_SYNTHETIC_FRAMES`.
 
 ### `CaptureStorage::saveCapture`
 
@@ -339,15 +347,23 @@ What the firmware does:
 
 - Rejects discard packets where the packet ID nibble is `0x0F`.
 - Verifies packet numbers arrive sequentially from `0..59`.
-- Holds CS high and waits about `185ms` in `LeptonDriver::resync()`.
-- Prints descriptive errors to Serial.
+- Holds CS high and waits about `185ms` in `LeptonVospi::resync()`.
+- Detects repeated all-zero or all-`0xFF` packet headers and restarts the FLIR
+  SPI peripheral before resyncing.
+- Issues a Lepton OEM reboot over CCI at ESP32 startup because the reset button
+  resets only the ESP32; the breakout v1.4 Lepton remains powered.
+- Prints descriptive errors and `vospi_status`, `sync_loss`, and `recovery`
+  counters to Serial.
 
 Suggested checks:
 
-- Confirm `FLIR_SPI_CS`, `FLIR_SPI_SCLK`, `FLIR_SPI_MISO`, and `GND`.
+- Confirm `FLIR_SPI_CS`, `FLIR_SPI_SCLK`, `FLIR_SPI_MISO`, `FLIR_SPI_MOSI`,
+  `FLIR_CCI_SDA`, `FLIR_CCI_SCL`, and `GND`.
 - Confirm the Lepton breakout voltage requirement.
-- Lower `kSpiFrequency` in `lepton_driver.h` if wiring is long or noisy.
-- Add CCI initialization once the module is connected if telemetry/radiometric mode needs explicit configuration.
+- Lower `kSpiFrequency` in `LeptonVospi` if wiring is long or noisy.
+- If Serial repeatedly shows `hdr=00 00 00 00`, CCI can be alive while VoSPI
+  MISO is electrically idle or the Lepton video stream is wedged. Check MISO,
+  CLK, CS, common ground, and whether the CCI reboot sequence is running.
 
 ### TF Card Write Failures
 

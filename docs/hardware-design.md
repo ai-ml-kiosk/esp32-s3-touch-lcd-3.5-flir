@@ -37,15 +37,20 @@ Use separate hardware paths for display and FLIR:
 | Onboard LCD/touch path | User interface | Built-in 320x480 AXS15231B LCD/touch and backlight, used as 480x320 landscape by default | Already wired by Waveshare; use the board support pins and drivers. |
 | FLIR SPI | Thermal frame capture | FLIR Lepton VoSPI | Keeps Lepton packet timing isolated from LCD/touch and TF-card transactions. |
 
-The FLIR SPI bus is wired to the exposed camera/expansion GPIO group:
-`GPIO38` SCLK, `GPIO39` MISO, `GPIO40` MOSI, and `GPIO41` CS. In this project
-`GPIO40` / FLIR MOSI is a required connection, not an optional placeholder.
+The confirmed FLIR SPI bus uses exposed expansion pins that are independent of
+the built-in LCD, touch, TF-card, and board I2C paths: `GPIO21` SCLK,
+`GPIO40` MISO, `GPIO41` MOSI, and `GPIO42` CS. In this project FLIR MOSI is a
+required connection, not an optional placeholder.
 
-Use the board's exposed I2C bus for FLIR CCI:
+Use a dedicated exposed I2C pair for FLIR CCI:
 
 | Bus | Purpose | Devices |
 |---|---|---|
-| Shared I2C/CCI | Lepton control/status plus onboard I2C devices | FLIR Lepton CCI address, typically `0x2A`; onboard devices remain on their Waveshare addresses. |
+| FLIR I2C/CCI | Lepton control/status | FLIR Lepton CCI address, typically `0x2A`, on `GPIO17` SDA and `GPIO18` SCL. |
+
+Keep `GPIO7` and `GPIO8` reserved for the Waveshare board I2C path. Earlier
+bring-up attempts that reused `GPIO7/GPIO8` for FLIR CCI were replaced by the
+independent `GPIO17/GPIO18` map.
 
 ## Power Budget Notes
 

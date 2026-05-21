@@ -35,7 +35,7 @@ From `ui/thermal_ui.py`:
 
 | Component | Responsibility |
 |---|---|
-| `lepton_vospi` | Dedicated SPI read loop, packet validation, frame assembly, resync. |
+| `lepton_vospi` | Dedicated SPI read loop, packet validation, frame assembly, resync. Implemented by `LeptonVospi`. |
 | `lepton_cci` | I2C/CCI control, status, optional FFC control, optional reset handling. |
 | `thermal_math` | TLinear to Celsius conversion, min/max detection, auto range, palette mapping. |
 | `display_driver` | Waveshare AXS15231B QSPI LCD initialization, drawing, backlight control. |
@@ -86,7 +86,8 @@ Start with a minimal thermal-only screen:
 - No Wi-Fi.
 - Fixed palette.
 - Fixed scale.
-- Serial logs for SPI sync and frame rate.
+- Serial logs for SPI sync, VoSPI status, sync-loss count, and frame rate.
+- Startup Lepton CCI reboot and VoSPI recovery counters.
 
 Then add controls in this order:
 
@@ -108,5 +109,12 @@ Then add controls in this order:
   RGB666.
 - Keep FLIR VoSPI on its own pins to avoid long LCD/touch/TF-card transactions
   disturbing Lepton capture.
+- Treat reset-button reboot as a warm camera restart. The ESP32 resets, but the
+  breakout v1.4 Lepton remains powered; firmware should reassert CS high,
+  reboot the Lepton over CCI when available, wait for camera boot/CCI stability,
+  then start VoSPI.
+- Repeated all-zero or all-`0xFF` VoSPI packet headers should be handled as an
+  invalid signal stream, not as packet zero. Restart the SPI peripheral and
+  resync before continuing.
 - If Wi-Fi is added later, test whether radio activity affects SPI timing or
   power stability.

@@ -124,11 +124,12 @@ The FLIR module remains external and uses the project pin map:
 
 | FLIR signal | ESP32-S3 GPIO |
 |---|---:|
-| `CLK` / `SCK` / `SCLK` | `GPIO38` |
-| `MISO` / `DATA` / `VoSPI` | `GPIO39` |
-| `MOSI` | `GPIO40` |
-| `CS` | `GPIO41` |
-| `SDA` / CCI SDA | `GPIO8` |
-| `SCL` / CCI SCL | `GPIO7` |
+| `CLK` / `SCK` / `SCLK` | `GPIO21` |
+| `MISO` / `DATA` / `VoSPI` | `GPIO40` |
+| `MOSI` | `GPIO41` |
+| `CS` | `GPIO42` |
+| `SDA` / CCI SDA | `GPIO17` |
+| `SCL` / CCI SCL | `GPIO18` |
 
 Do not assign FLIR signals to onboard LCD, touch, QSPI display, or TF-card pins.
+Keep `GPIO7` and `GPIO8` available for the board I2C path.
