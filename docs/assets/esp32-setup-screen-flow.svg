@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720" role="img" aria-labelledby="title desc">
   <title id="title">ESP32 on-device setup screen flow</title>
-  <desc id="desc">Diagram showing the ESP32 FLIR viewer SETUP button opening an on-device setup screen for date format, time format, locale, save path, save, and cancel. CAP later writes to the configured TF-card path.</desc>
+  <desc id="desc">Diagram showing the ESP32 FLIR viewer SETUP button opening an on-device setup screen for date format, time format, locale, save path, idle sleep timeout, calibration offset, save, and cancel. CAP later writes to the configured TF-card path.</desc>
   <defs>
     <style>
       .bg { fill: #f8fafc; }
@@ -70,17 +70,25 @@
   <rect class="field" x="772" y="316" width="196" height="30" rx="5"/>
   <text class="text" x="786" y="337">/flir</text>
 
-  <rect class="field" x="664" y="378" width="126" height="34" rx="6"/>
-  <text class="text" x="727" y="400" text-anchor="middle">Cancel</text>
-  <rect class="primary" x="842" y="378" width="126" height="34" rx="6"/>
-  <text class="white" x="905" y="400" text-anchor="middle">Save</text>
+  <text class="text" x="664" y="376">Idle sleep</text>
+  <rect class="field" x="772" y="356" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="377">Off / seconds</text>
 
-  <text class="muted" x="664" y="450">
+  <text class="text" x="664" y="422">Cal offset</text>
+  <rect class="field" x="772" y="402" width="196" height="30" rx="5"/>
+  <text class="text" x="786" y="423">+0.0C</text>
+
+  <rect class="field" x="664" y="460" width="126" height="34" rx="6"/>
+  <text class="text" x="727" y="482" text-anchor="middle">Cancel</text>
+  <rect class="primary" x="842" y="460" width="126" height="34" rx="6"/>
+  <text class="white" x="905" y="482" text-anchor="middle">Save</text>
+
+  <text class="muted" x="664" y="522">
     <tspan x="664" dy="0">Save validates the TF-card path, persists settings,</tspan>
-    <tspan x="664" dy="20">and returns to the thermal viewer.</tspan>
+    <tspan x="664" dy="20">and applies idle sleep plus temperature offset.</tspan>
   </text>
 
-  <path class="line-blue" d="M842 395 C732 550 492 538 362 388"/>
+  <path class="line-blue" d="M842 477 C732 550 492 538 362 388"/>
   <text class="label" x="178" y="552">Capture path contract</text>
   <text class="text" x="178" y="580">
     <tspan x="178" dy="0">CAP reads Settings.savePath at press time.</tspan>

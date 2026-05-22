@@ -20,6 +20,8 @@ class DisplayDriver {
   bool isReady() const { return ready_; }
   bool isLandscape() const { return landscape_; }
   DisplayInfo info() const;
+  void setBacklight(bool enabled);
+  bool backlightEnabled() const { return backlightEnabled_; }
 
   void fillScreen(uint16_t color);
   void fillRect(int16_t x, int16_t y, uint16_t width, uint16_t height, uint16_t color);
@@ -39,4 +41,5 @@ class DisplayDriver {
 
   bool ready_ = false;
   bool landscape_ = true;
+  bool backlightEnabled_ = false;
 };

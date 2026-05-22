@@ -25,5 +25,5 @@ References consulted for the initial design:
 - FLIR Lepton flat-field correction command notes:
   https://flir.custhelp.com/app/answers/detail/a_id/3255/~/flir-oem---lepton-flat-field-correction-commands
 - FLIR Lepton Software IDD Rev303, used for CCI register layout, status bits,
-  command types, and OEM reboot command:
+  command types, OEM reboot, OEM power-down, and software power-on behavior:
   https://groupgets-files.s3.amazonaws.com/purethermal/Lepton-Software-IDD-Rev303.pdf

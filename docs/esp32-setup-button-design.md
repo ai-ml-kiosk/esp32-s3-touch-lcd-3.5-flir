@@ -14,7 +14,8 @@ not a host-computer dialog.
   navigation, `Save`, and `Cancel`.
 - `Save` validates settings, updates the runtime settings object, persists them,
   and returns to the thermal viewer.
-- `Cancel` discards pending edits and returns to the thermal viewer.
+- `Cancel` discards pending edits from the setup draft and returns to the
+  thermal viewer.
 
 ## Initial Data
 
@@ -25,6 +26,8 @@ The setup screen should show live firmware state:
 | Date/time format | Firmware settings. These affect display labels first; timestamped filenames are added only after a clock source is enabled. |
 | Locale/region | Firmware settings, for example `en_AU`, not an OS locale string. |
 | Save path | Active TF-card capture directory, default `/flir`. |
+| Idle sleep | Touch inactivity timeout in seconds. `Off` disables automatic Lepton sleep. |
+| Calibration offset | Temperature display offset in degrees C. |
 
 If no settings have been saved yet, firmware should use these defaults:
 
@@ -35,6 +38,58 @@ If no settings have been saved yet, firmware should use these defaults:
 | Date format | `YYYY-MM-DD` |
 | Time format | `HH:mm:ss` |
 | Orientation | Landscape |
+| Idle sleep | `Off` / `0` seconds |
+| Calibration offset | `+0.0C` |
+
+## Touch Inactivity Sleep
+
+The ESP32 app can detect touch-based inactivity by recording the last time the
+touch controller reported a pressed point. This is deliberately based on user
+touches, not thermal-frame activity, because the Lepton stream is expected to
+keep running even when no user is present.
+
+Runtime policy:
+
+- Every valid touch press updates `lastUserActivityMs`.
+- If `idleSleepSeconds` is `0`, automatic sleep is disabled.
+- If `idleSleepSeconds` is greater than `0` and no touch is seen before the
+  timeout expires, firmware requests the existing backend Lepton CCI sleep path.
+- Automatic idle sleep turns the LCD backlight off after rendering the bottom
+  status message, reducing screen power draw and avoiding a glowing idle panel.
+- The first touch while the Lepton is asleep wakes the Lepton and is consumed by
+  the wake action. It must not also trigger the UI button underneath the finger.
+- Touch wake and Serial `wake` turn the backlight on before recovering Lepton
+  VoSPI. Manual Serial `sleep` leaves the screen on for diagnostics.
+- Setup mode suppresses automatic sleep so users are not interrupted while
+  changing settings.
+- Serial `sleep` and `wake` remain available for diagnostics.
+
+Setup should expose `Idle sleep` as seconds presets:
+
+```text
+Off -> 30 sec -> 60 sec -> 120 sec -> 300 sec -> 600 sec -> Off
+```
+
+This keeps the UI small enough for the 3.5 inch screen and avoids a full numeric
+keyboard until the setup module grows richer text/number editing controls.
+
+## Temperature Calibration Offset
+
+The first calibration setting is a simple display offset. It corrects displayed
+temperature readouts without changing raw thermal frames or saved `.raw` files.
+
+```text
+correctedC = measuredC + offsetC
+```
+
+Setup should expose `Cal` as a touch-cycled value:
+
+```text
+-5.0C -> -4.5C -> ... -> +0.0C -> ... -> +5.0C -> -5.0C
+```
+
+Firmware stores this as tenths of a degree in NVS. The offset applies to center,
+hot, cold, and palette-scale labels only.
 
 ## Save Path Rules
 
@@ -96,6 +151,8 @@ struct AppSettings {
   char dateFormat[16] = "YYYY-MM-DD";
   char timeFormat[16] = "HH:mm:ss";
   bool landscape = true;
+  uint16_t inactivitySleepSeconds = 0;
+  int8_t temperatureOffsetTenths = 0;
 };
 
 enum class SetupResult {
@@ -116,6 +173,8 @@ The first implementation can be simple and touch-friendly:
 | Time format: HH:mm:ss                          |
 | Locale:      en_AU                             |
 | Save path:   /flir                             |
+| Idle sleep:  Off                               |
+| Cal:         +0.0C                             |
 |                                                |
 | [Cancel]                              [Save]   |
 +------------------------------------------------+

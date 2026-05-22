@@ -14,6 +14,8 @@
 8. Initialize the FLIR Lepton 2.5, handling the synchronization of VoSPI packets (discarding 0x0F packets) and handling periodic FFC (Flat Field Correction) shutter clicks.
 9. Press the ESP32 reset/reboot button and confirm the Lepton stream resumes
    without a full power cycle.
+10. Test backend-only Lepton CCI sleep/wake from Serial Monitor before any UI
+    button is added.
 
 ## Phase 2: FLIR Frame Capture
 
@@ -61,6 +63,12 @@ Run for at least 30 minutes:
 - No permanent VoSPI sync loss.
 - Reset-button reboot recovers: the firmware requests a Lepton OEM reboot over
   CCI before starting VoSPI, then frame count increases again.
+- Serial command `sleep` logs a CCI OEM power-down ACK and status changes to
+  `low_power=sleep`; VoSPI frame reads pause without watchdog resets.
+- Serial command `wake` logs the CCI bus recovery pulse, power-on write ACK,
+  stable boot status, and renewed frame increments.
+- Repeat at least 10 `sleep` / `wake` cycles and confirm VoSPI does not remain
+  in all-zero or all-`0xFF` packet recovery after wake.
 - No display white-screen or SPI bus lockups.
 - Thermal frame rate remains stable.
 - ESP32-S3 regulator, LCD backlight, and FLIR breakout do not overheat.
@@ -73,8 +81,26 @@ Run for at least 30 minutes:
 - A full power cycle and an ESP32 reset-button reboot are different cases.
   Breakout v1.4 leaves the Lepton powered during ESP32 reset because no
   separate `RST` or `PWR_EN` is exposed.
+- After a CCI OEM power-down, uploading or resetting the ESP32 does not
+  physically power-cycle the Lepton. Startup now sends the CCI power-on register
+  sequence before the usual OEM reboot so firmware can recover a Lepton that was
+  left in software power-down.
 - Repeated VoSPI headers of `00 00 00 00` mean CCI can still be alive while the
   video SPI stream is idle or wedged. The firmware now detects that condition,
   restarts the SPI peripheral, and performs startup CCI reboot of the Lepton.
+- Lepton CCI software power-down is not equivalent to removing VIN from the
+  breakout. It should be treated as experimental standby until repeated
+  sleep/wake monitor logs prove that CCI ACK, bus recovery, boot status, and
+  VoSPI recovery are all repeatable on this module.
+- First backend sleep/wake validation showed the wake power-on write may fail
+  once with an ESP-IDF I2C invalid-state error after SDA recovery, then succeed
+  on a second bus-recovery attempt. Keep this retry path and continue testing
+  before exposing the feature in the touch UI.
+- A 10-cycle backend Serial Monitor test passed on the bench. Each `sleep`
+  command returned `Lepton CCI OEM power-down response=ok`, each `wake` command
+  recovered with the second power-on write attempt, and frame counters resumed
+  afterward with `low_power=awake`, `cci_0x2A=yes`, and `vospi_status=0`.
+  Observed frame counter range across the test was approximately `763` through
+  `1123`, confirming the stream resumed after repeated standby transitions.
 - Display flicker was reduced by batching UI drawing and flushing the display
   once per rendered frame.

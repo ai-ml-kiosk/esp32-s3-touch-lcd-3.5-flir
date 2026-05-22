@@ -30,6 +30,7 @@ class ThermalUi {
   PaletteMode palette() const { return palette_; }
   bool zoomed() const { return zoomed_; }
   bool setupActive() const { return setupActive_; }
+  void showStatus(const char* message);
 
  private:
   enum class Action {
@@ -43,6 +44,8 @@ class ThermalUi {
     SetupCancel,
     SetupSave,
     SetupPath,
+    SetupIdle,
+    SetupTempOffset,
   };
 
   struct Rect {
@@ -55,6 +58,8 @@ class ThermalUi {
   Action hitTest(uint16_t x, uint16_t y, bool landscape) const;
   void cyclePalette();
   void cyclePath(AppSettings& settings);
+  void cycleIdleSleep(AppSettings& settings);
+  void cycleTemperatureOffset(AppSettings& settings);
   void renderSetup(DisplayDriver& display, const AppSettings& settings);
   void renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady);
   void drawButton(DisplayDriver& display, const Rect& rect, const char* label, bool primary = false);
@@ -67,12 +72,12 @@ class ThermalUi {
                         float minC,
                         bool labelsLeft);
   void drawFeedback(DisplayDriver& display, bool landscape);
-  void setFeedback(const char* message);
   bool contains(const Rect& rect, uint16_t x, uint16_t y) const;
 
   PaletteMode palette_ = PaletteMode::Ironbow;
   bool zoomed_ = false;
   bool setupActive_ = false;
+  AppSettings setupDraftSettings_{};
   uint32_t lastTouchMs_ = 0;
   uint32_t ignoreTouchUntilMs_ = 0;
   uint32_t ignoreSetupTouchUntilMs_ = 0;

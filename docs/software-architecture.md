@@ -41,7 +41,7 @@ From `ui/thermal_ui.py`:
 | `display_driver` | Waveshare AXS15231B QSPI LCD initialization, drawing, backlight control. |
 | `touch_driver` | Built-in AXS15231B I2C touch sampling, calibration, debouncing. |
 | `capture_storage` | Optional BMP/raw frame capture and logs on the onboard TF card. |
-| `setup_ui` | On-device settings screen for save path, locale/region, date/time format, and orientation. |
+| `setup_ui` | On-device settings screen for save path, locale/region, date/time format, orientation, touch inactivity sleep, and temperature offset calibration. |
 | `thermal_ui` | Main screen layout, buttons, orientation/zoom, high/low markers. |
 | `settings` | Non-volatile settings in NVS, with optional TF-card config later. |
 
@@ -88,6 +88,7 @@ Start with a minimal thermal-only screen:
 - Fixed scale.
 - Serial logs for SPI sync, VoSPI status, sync-loss count, and frame rate.
 - Startup Lepton CCI reboot and VoSPI recovery counters.
+- Backend-only Serial Monitor commands for Lepton CCI standby/wake testing.
 
 Then add controls in this order:
 
@@ -97,6 +98,7 @@ Then add controls in this order:
 4. Capture to TF card.
 5. Settings persistence.
 6. Optional manual FFC button.
+7. Optional Lepton sleep/wake UI only after backend serial testing is reliable.
 
 ## ESP32-S3 Constraints
 
@@ -113,6 +115,16 @@ Then add controls in this order:
   breakout v1.4 Lepton remains powered; firmware should reassert CS high,
   reboot the Lepton over CCI when available, wait for camera boot/CCI stability,
   then start VoSPI.
+- Treat CCI sleep/wake as a backend-controlled power state. The firmware pauses
+  VoSPI before OEM power-down, recovers the CCI bus before software power-on,
+  waits for boot status, and restarts VoSPI before accepting the feature as UI
+  ready.
+- Automatic touch-idle sleep should also turn off the LCD backlight through the
+  display driver. Wake paths must restore the backlight before camera recovery
+  status is shown.
+- Startup must also tolerate a Lepton left in software power-down by a previous
+  firmware session. Send the CCI power-on register sequence before the normal
+  startup OEM reboot and VoSPI begin.
 - Repeated all-zero or all-`0xFF` VoSPI packet headers should be handled as an
   invalid signal stream, not as packet zero. Restart the SPI peripheral and
   resync before continuing.

@@ -41,11 +41,26 @@ void formatTemp(char* out, size_t outSize, float temp) {
   snprintf(out, outSize, "%.1fC", temp);
 }
 
+void formatOffset(char* out, size_t outSize, int8_t offsetTenths) {
+  snprintf(out, outSize,
+           "%+.1fC",
+           static_cast<float>(offsetTenths) / 10.0f);
+}
+
 }  // namespace
 
 bool ThermalUi::begin(DisplayDriver& display) {
   display.fillScreen(kBg);
   return true;
+}
+
+void ThermalUi::showStatus(const char* message) {
+  if (message == nullptr || message[0] == '\0') {
+    return;
+  }
+  strncpy(feedback_, message, sizeof(feedback_) - 1);
+  feedback_[sizeof(feedback_) - 1] = '\0';
+  feedbackUntilMs_ = millis() + 3500;
 }
 
 void ThermalUi::render(DisplayDriver& display,
@@ -164,7 +179,7 @@ void ThermalUi::render(DisplayDriver& display,
   drawFeedback(display, settings.landscape);
 
   if (setupActive_) {
-    renderSetup(display, settings);
+    renderSetup(display, setupDraftSettings_);
   }
 }
 
@@ -191,18 +206,20 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
 
   const Action action = hitTest(touch.x, touch.y, settings.landscape);
   if (setupActive_ && now < ignoreSetupTouchUntilMs_ &&
-      (action == Action::SetupCancel || action == Action::SetupSave || action == Action::SetupPath)) {
+      (action == Action::SetupCancel || action == Action::SetupSave ||
+       action == Action::SetupPath || action == Action::SetupIdle ||
+       action == Action::SetupTempOffset)) {
     return false;
   }
 
   switch (action) {
     case Action::Palette:
       cyclePalette();
-      setFeedback(paletteName(palette_));
+      showStatus(paletteName(palette_));
       return true;
     case Action::Ffc:
       Serial.println("Manual FFC requested; CCI command not implemented yet");
-      setFeedback("FFC requested");
+      showStatus("FFC requested");
       return true;
     case Action::Capture:
       {
@@ -223,40 +240,64 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
         } else {
           snprintf(message, sizeof(message), "Capture failed");
         }
-        setFeedback(message);
+        showStatus(message);
       }
       return true;
     case Action::Setup:
+      setupDraftSettings_ = settings;
       setupActive_ = true;
       ignoreSetupTouchUntilMs_ = now + 1500;
-      setFeedback("Setup opened");
+      showStatus("Setup opened");
       return true;
     case Action::Zoom:
       zoomed_ = !zoomed_;
       ignoreTouchUntilMs_ = now + 650;
-      setFeedback(zoomed_ ? "Zoom in" : "Zoom out");
+      showStatus(zoomed_ ? "Zoom in" : "Zoom out");
       return true;
     case Action::Orientation:
       settings.landscape = !settings.landscape;
       display.setLandscape(settings.landscape);
       ignoreTouchUntilMs_ = now + 750;
-      setFeedback(settings.landscape ? "Landscape" : "Portrait");
+      showStatus(settings.landscape ? "Landscape" : "Portrait");
       return true;
     case Action::SetupCancel:
       setupActive_ = false;
-      setFeedback("Setup canceled");
+      showStatus("Setup canceled");
       return true;
     case Action::SetupSave:
-      if (storage.validateSavePath(settings.savePath)) {
+      if (storage.validateSavePath(setupDraftSettings_.savePath)) {
+        settings = setupDraftSettings_;
         setupActive_ = false;
-        setFeedback("Setup saved");
+        showStatus("Setup saved");
       } else {
-        setFeedback("Invalid path");
+        showStatus("Invalid path");
       }
       return true;
     case Action::SetupPath:
-      cyclePath(settings);
-      setFeedback(settings.savePath);
+      cyclePath(setupDraftSettings_);
+      showStatus(setupDraftSettings_.savePath);
+      return true;
+    case Action::SetupIdle:
+      cycleIdleSleep(setupDraftSettings_);
+      {
+        char message[40] = {};
+        if (setupDraftSettings_.inactivitySleepSeconds == 0) {
+          snprintf(message, sizeof(message), "Idle sleep off");
+        } else {
+          snprintf(message, sizeof(message), "Idle sleep %us", setupDraftSettings_.inactivitySleepSeconds);
+        }
+        showStatus(message);
+      }
+      return true;
+    case Action::SetupTempOffset:
+      cycleTemperatureOffset(setupDraftSettings_);
+      {
+        char offsetText[16] = {};
+        char message[40] = {};
+        formatOffset(offsetText, sizeof(offsetText), setupDraftSettings_.temperatureOffsetTenths);
+        snprintf(message, sizeof(message), "Temp offset %s", offsetText);
+        showStatus(message);
+      }
       return true;
     case Action::None:
     default:
@@ -269,16 +310,22 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
   const uint16_t screenH = landscape ? 320 : 480;
 
   if (setupActive_) {
-    if (contains({40, 90, static_cast<uint16_t>(screenW - 80), 220}, x, y)) {
+    const uint16_t panelY = landscape ? 44 : 90;
+    if (contains({40, static_cast<int16_t>(panelY), static_cast<uint16_t>(screenW - 80), 258}, x, y)) {
       const uint16_t panelX = 40;
-      const uint16_t panelY = 90;
       if (contains({static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 118), 150, 28}, x, y)) {
         return Action::SetupPath;
       }
-      if (contains({static_cast<int16_t>(panelX + 18), static_cast<int16_t>(panelY + 170), 90, 34}, x, y)) {
+      if (contains({static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 150), 150, 28}, x, y)) {
+        return Action::SetupIdle;
+      }
+      if (contains({static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 182), 150, 28}, x, y)) {
+        return Action::SetupTempOffset;
+      }
+      if (contains({static_cast<int16_t>(panelX + 18), static_cast<int16_t>(panelY + 214), 90, 34}, x, y)) {
         return Action::SetupCancel;
       }
-      if (contains({static_cast<int16_t>(screenW - 148), static_cast<int16_t>(panelY + 170), 90, 34}, x, y)) {
+      if (contains({static_cast<int16_t>(screenW - 148), static_cast<int16_t>(panelY + 214), 90, 34}, x, y)) {
         return Action::SetupSave;
       }
     }
@@ -344,12 +391,43 @@ void ThermalUi::cyclePath(AppSettings& settings) {
   settings.savePath[sizeof(settings.savePath) - 1] = '\0';
 }
 
+void ThermalUi::cycleIdleSleep(AppSettings& settings) {
+  switch (settings.inactivitySleepSeconds) {
+    case 0:
+      settings.inactivitySleepSeconds = 30;
+      break;
+    case 30:
+      settings.inactivitySleepSeconds = 60;
+      break;
+    case 60:
+      settings.inactivitySleepSeconds = 120;
+      break;
+    case 120:
+      settings.inactivitySleepSeconds = 300;
+      break;
+    case 300:
+      settings.inactivitySleepSeconds = 600;
+      break;
+    default:
+      settings.inactivitySleepSeconds = 0;
+      break;
+  }
+}
+
+void ThermalUi::cycleTemperatureOffset(AppSettings& settings) {
+  if (settings.temperatureOffsetTenths < -50 || settings.temperatureOffsetTenths >= 50) {
+    settings.temperatureOffsetTenths = -50;
+    return;
+  }
+  settings.temperatureOffsetTenths += 5;
+}
+
 void ThermalUi::renderSetup(DisplayDriver& display, const AppSettings& settings) {
   const DisplayInfo info = display.info();
   const uint16_t panelW = info.width - 80;
-  const uint16_t panelH = 220;
+  const uint16_t panelH = 258;
   const uint16_t panelX = 40;
-  const uint16_t panelY = 90;
+  const uint16_t panelY = info.height > 360 ? 90 : 44;
   display.fillRect(panelX, panelY, panelW, panelH, DisplayDriver::rgb565(245, 247, 250));
   display.drawRect(panelX, panelY, panelW, panelH, kPrimary);
   display.drawText(panelX + 14, panelY + 14, "SETUP", DisplayDriver::rgb565(15, 23, 42), 2);
@@ -359,8 +437,20 @@ void ThermalUi::renderSetup(DisplayDriver& display, const AppSettings& settings)
   display.drawText(panelX + 112, panelY + 86, settings.timeFormat, DisplayDriver::rgb565(15, 23, 42), 1);
   display.drawText(panelX + 18, panelY + 118, "Path", DisplayDriver::rgb565(51, 65, 85), 1);
   drawButton(display, {static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 108), 150, 28}, settings.savePath);
-  drawButton(display, {static_cast<int16_t>(panelX + 18), static_cast<int16_t>(panelY + 170), 90, 34}, "Cancel");
-  drawButton(display, {static_cast<int16_t>(info.width - 148), static_cast<int16_t>(panelY + 170), 90, 34}, "Save", true);
+  display.drawText(panelX + 18, panelY + 150, "Idle", DisplayDriver::rgb565(51, 65, 85), 1);
+  char idleText[16] = {};
+  if (settings.inactivitySleepSeconds == 0) {
+    snprintf(idleText, sizeof(idleText), "Off");
+  } else {
+    snprintf(idleText, sizeof(idleText), "%u sec", settings.inactivitySleepSeconds);
+  }
+  drawButton(display, {static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 140), 150, 28}, idleText);
+  display.drawText(panelX + 18, panelY + 182, "Cal", DisplayDriver::rgb565(51, 65, 85), 1);
+  char offsetText[16] = {};
+  formatOffset(offsetText, sizeof(offsetText), settings.temperatureOffsetTenths);
+  drawButton(display, {static_cast<int16_t>(panelX + 112), static_cast<int16_t>(panelY + 172), 150, 28}, offsetText);
+  drawButton(display, {static_cast<int16_t>(panelX + 18), static_cast<int16_t>(panelY + 214), 90, 34}, "Cancel");
+  drawButton(display, {static_cast<int16_t>(info.width - 148), static_cast<int16_t>(panelY + 214), 90, 34}, "Save", true);
 }
 
 void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady) {
@@ -448,21 +538,12 @@ void ThermalUi::drawPaletteScale(DisplayDriver& display,
 
 void ThermalUi::drawFeedback(DisplayDriver& display, bool landscape) {
   const DisplayInfo info = display.info();
-  const int16_t y = info.height - (landscape ? 24 : 28);
   const uint16_t h = landscape ? 18 : 20;
+  const int16_t y = static_cast<int16_t>(info.height - h);
   const uint16_t bg = millis() < feedbackUntilMs_ ? DisplayDriver::rgb565(15, 23, 42) : kBg;
-  display.fillRoundRect(8, y, info.width - 16, h, 5, bg);
-  display.drawRoundRect(8, y, info.width - 16, h, 5, DisplayDriver::rgb565(51, 65, 85));
-  display.drawText(16, y + 5, feedback_, kMuted, 1);
-}
-
-void ThermalUi::setFeedback(const char* message) {
-  if (message == nullptr || message[0] == '\0') {
-    return;
-  }
-  strncpy(feedback_, message, sizeof(feedback_) - 1);
-  feedback_[sizeof(feedback_) - 1] = '\0';
-  feedbackUntilMs_ = millis() + 2500;
+  display.fillRect(0, y, info.width, h, bg);
+  display.fillRect(0, y, info.width, 1, DisplayDriver::rgb565(51, 65, 85));
+  display.drawText(8, y + 5, feedback_, kMuted, 1);
 }
 
 bool ThermalUi::contains(const Rect& rect, uint16_t x, uint16_t y) const {

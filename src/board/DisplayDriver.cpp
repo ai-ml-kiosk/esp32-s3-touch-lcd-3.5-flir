@@ -28,8 +28,7 @@ void flushDisplay() {
 bool DisplayDriver::begin(bool landscape) {
   landscape_ = landscape;
   pinMode(BoardPins::LCD_BACKLIGHT, OUTPUT);
-  digitalWrite(BoardPins::LCD_BACKLIGHT, HIGH);
-  Serial.printf("LCD backlight GPIO%d set HIGH\n", BoardPins::LCD_BACKLIGHT);
+  setBacklight(true);
 
   ready_ = initializePanel();
   if (!ready_) {
@@ -41,6 +40,15 @@ bool DisplayDriver::begin(bool landscape) {
   fillScreen(rgb565(0, 0, 0));
   flush();
   return true;
+}
+
+void DisplayDriver::setBacklight(bool enabled) {
+  pinMode(BoardPins::LCD_BACKLIGHT, OUTPUT);
+  digitalWrite(BoardPins::LCD_BACKLIGHT, enabled ? HIGH : LOW);
+  if (backlightEnabled_ != enabled) {
+    Serial.printf("LCD backlight GPIO%d set %s\n", BoardPins::LCD_BACKLIGHT, enabled ? "HIGH" : "LOW");
+  }
+  backlightEnabled_ = enabled;
 }
 
 void DisplayDriver::setLandscape(bool landscape) {

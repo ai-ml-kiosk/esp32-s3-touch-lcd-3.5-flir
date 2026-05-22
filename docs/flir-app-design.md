@@ -51,6 +51,23 @@ settings, validation, persistence, and capture-path contract.
 
 ![ESP32 setup screen flow](assets/esp32-setup-screen-flow.svg)
 
+The setup screen includes an `Idle` field for touch-based inactivity sleep. The
+field is expressed in seconds and cycles through `Off`, `30`, `60`, `120`,
+`300`, and `600` seconds. When enabled, firmware sleeps the Lepton through the
+backend CCI power-management path after the timeout expires. A first touch while
+asleep wakes the Lepton and is consumed by the wake action.
+Automatic idle sleep also turns off the LCD backlight after writing the bottom
+status message. Touch wake and Serial `wake` turn the backlight on before
+recovering the Lepton. Manual Serial `sleep` leaves the screen on for
+diagnostics.
+The setup screen also includes a `Cal` temperature offset field. It cycles in
+`0.5C` steps from `-5.0C` through `+5.0C`, persists in NVS, and is applied only
+to displayed temperature labels. Raw thermal data and saved `.raw` frames remain
+uncorrected.
+Runtime feedback is shown on the last line of the screen. This bottom status
+line reports button actions, capture results, idle timeout sleep, and Lepton
+wake progress without covering the thermal viewport or the main controls.
+
 When `CAP` is pressed, capture storage must use the active save path from the
 runtime configuration last saved through `SETUP`. The capture module should read
 that setting at capture time instead of caching a separate path, so setup changes
@@ -116,6 +133,12 @@ Lepton 2.x VoSPI frames through `LeptonVospi`. CCI is used during startup to
 detect the Lepton at `0x2A` and issue an OEM reboot command before VoSPI begins,
 which makes ESP32 reset-button restarts more reliable when the Lepton remains
 powered.
+The firmware also includes backend-only Lepton power-management commands over
+CCI. These are intentionally **not** exposed as touch UI buttons yet. Serial
+Monitor commands can request OEM power-down, wake the camera by sending the
+Lepton power-on register sequence, and print CCI/VoSPI recovery status. This
+keeps the feature testable without risking accidental UI taps freezing the live
+thermal view.
 The Waveshare enclosure/header orientation currently mounts the Lepton image
 upside down relative to the LCD. The firmware applies an orientation-aware
 thermal-frame transform: landscape flips both axes, while portrait rotates the
@@ -184,6 +207,76 @@ Display::pushImage()
 Waveshare 3.5B LCD with min/max/center overlay
 ```
 
+## Backend Lepton Power Management
+
+This project does not have a hardware `PWR_EN` or `RST` line connected to the
+FLIR Lepton breakout v1.4, so the first power-management milestone uses only
+the Lepton CCI/I2C command path:
+
+```text
+Serial Monitor "sleep"
+        |
+        v
+Pause VoSPI reads and hold CS high
+        |
+        v
+Run Lepton OEM Power Down over CCI
+        |
+        v
+Serial Monitor shows CCI ACK / low_power=sleep
+
+Serial Monitor "wake"
+        |
+        v
+Send CCI bus recovery clock pulse if SDA is held low
+        |
+        v
+Write 0x0000 to the Lepton power-on register
+        |
+        v
+Wait for boot/status ready, restart VoSPI, log recovery counters
+```
+
+Startup also sends the CCI power-on register sequence before the normal OEM
+reboot. This matters after firmware upload or ESP32 reset because the reset
+button does not remove VIN from the Lepton breakout, so the camera can remain
+in software power-down while the ESP32 starts fresh.
+
+The supported serial commands are:
+
+```text
+help    show available backend commands
+status  print CCI ACK, low-power state, heap/PSRAM, VoSPI status, sync loss, and recovery counters
+sleep   request Lepton OEM power-down over CCI and pause VoSPI reads
+wake    recover the CCI bus, request Lepton power-on, wait for boot, and restart VoSPI
+```
+
+Reliability gate before UI exposure:
+
+- `sleep` must log a successful CCI ACK and switch status to `low_power=sleep`.
+- `wake` must log the CCI recovery pulse, a successful power-on write, stable
+  boot status, and renewed frame increments.
+- Monitor logs must show no permanent VoSPI all-zero/all-`0xFF` packet stream
+  after wake.
+- Repeated sleep/wake cycles must be tested on the actual module before adding
+  any touch button.
+
+Current bench result: 10 backend Serial Monitor cycles passed. Every `sleep`
+returned CCI OEM power-down OK, every `wake` resumed VoSPI frames, and the
+frame counter continued to advance after wake. The wake sequence consistently
+needed the built-in second-attempt CCI bus recovery, so the feature should stay
+backend-only until that behavior is either accepted as normal for this board or
+hidden behind a clearer UI progress state.
+Wake latency is caused by Lepton software power-on, CCI bus recovery, OEM reboot
+settling, and VoSPI resync. The wake path now uses a shorter boot-status wait
+because this module often resumes VoSPI even when the boot-status bit does not
+stabilize during the longer wait.
+
+Important Lepton CCI caveat: the FLIR IDD describes software power-on after OEM
+power-down as limited and notes that a full power cycle may still be required
+after some sequences. Treat this feature as an experimental standby path until
+bench testing proves repeatability on this exact Lepton 2.5 breakout.
+
 ## Build Modes
 
 The bring-up firmware is the current default build:
@@ -204,11 +297,13 @@ The default environment is:
 pio run -e waveshare-esp32-s3-touch-lcd-35b-flir
 ```
 
-Planned real FLIR mode should accept these Serial Monitor commands:
+Current backend Serial Monitor commands:
 
 ```text
-p  cycle palette: Ironbow -> White Hot -> Black Hot -> Histogram
-orientation status label  toggle landscape <-> portrait
+help    show available commands
+status  print CCI/VoSPI/runtime diagnostics
+sleep   request Lepton CCI OEM power-down and pause VoSPI
+wake    request Lepton CCI power-on and restart VoSPI
 ```
 
 ## Proposed Module Contracts

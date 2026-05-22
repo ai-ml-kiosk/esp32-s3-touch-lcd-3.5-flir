@@ -5,6 +5,9 @@
 #include "pin_config.h"
 
 bool LeptonVospi::begin() {
+  spi_.end();
+  delay(20);
+
   pinMode(Pins::FLIR_SPI_CS, OUTPUT);
   digitalWrite(Pins::FLIR_SPI_CS, HIGH);
 
