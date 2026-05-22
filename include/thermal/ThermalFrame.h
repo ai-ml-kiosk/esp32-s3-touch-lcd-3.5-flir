@@ -24,6 +24,8 @@ struct ThermalStats {
   uint16_t hotY = 0;
   uint16_t coldX = 0;
   uint16_t coldY = 0;
+  uint16_t markerWidth = kLeptonWidth;
+  uint16_t markerHeight = kLeptonHeight;
 };
 
 enum class PaletteMode {

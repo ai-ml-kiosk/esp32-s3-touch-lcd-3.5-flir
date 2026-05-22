@@ -272,7 +272,7 @@ void renderFrame() {
     return;
   }
   if (frame.frameNumber != 0) {
-    thermal.renderRgb565(frame, ui.palette(), viewportPixels, viewportWidth, viewportHeight, &stats);
+    thermal.renderRgb565(frame, ui.palette(), viewportPixels, viewportWidth, viewportHeight, &stats, ui.zoomed(), settings.landscape);
   }
   ui.render(display, frame, stats, viewportPixels, viewportWidth, viewportHeight, settings, storage.isMounted());
   display.flush();

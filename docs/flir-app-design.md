@@ -18,13 +18,16 @@ full capture/render/storage app described here is the next implementation stage.
 The first complete app screen should prioritize a live thermal viewport with
 only the controls and readouts needed during use: frame status, hot/cold markers,
 center temperature, palette/range state, manual FFC, status-bar orientation
-switching, capture to TF card, and `SETUP` configuration.
+switching, zoom, capture to TF card, and `SETUP` configuration.
 
 Landscape is the default orientation for this hardware. The status bar should
-show the active orientation as a tappable state label: `LANDSCAPE` in landscape
-mode and `PORTRAIT` in portrait mode. Tapping that label toggles layouts. The
-selected orientation should be saved with other viewer settings so the device
-boots back into the user's last chosen layout.
+place the active orientation label at the left edge of the screen, followed by a
+zoom toggle. The orientation label shows `LANDSCAPE` in landscape mode and
+`PORTRAIT` in portrait mode. Tapping that label toggles layouts. The zoom toggle
+shows `ZOOM+` in normal view and `ZOOM-` while zoomed; zoom mode renders a
+center crop of the Lepton frame and remaps hot/cold marker positions to the
+visible crop. The selected orientation should be saved with other viewer
+settings so the device boots back into the user's last chosen layout.
 
 The final render target is the built-in 480x320 landscape display using the
 panel's driver-native pixel path. Keep palette calculations internally high
@@ -113,6 +116,11 @@ Lepton 2.x VoSPI frames through `LeptonVospi`. CCI is used during startup to
 detect the Lepton at `0x2A` and issue an OEM reboot command before VoSPI begins,
 which makes ESP32 reset-button restarts more reliable when the Lepton remains
 powered.
+The Waveshare enclosure/header orientation currently mounts the Lepton image
+upside down relative to the LCD. The firmware applies an orientation-aware
+thermal-frame transform: landscape flips both axes, while portrait rotates the
+thermal frame 90 degrees to the right. Hot/cold marker positions use the same
+transform as the rendered pixels, leaving the LCD UI orientation unchanged.
 Because breakout v1.4 does not expose dedicated power-enable or reset pins, the
 firmware leaves `FLIR_POWER_ENABLE` and `FLIR_RESET` disabled in
 `include/pin_config.h`.

@@ -29,6 +29,14 @@ const char* paletteName(PaletteMode palette) {
   }
 }
 
+uint16_t orientationWidth(bool landscape) {
+  return landscape ? 112 : 90;
+}
+
+uint16_t zoomWidth(bool landscape) {
+  return landscape ? 70 : 56;
+}
+
 void formatTemp(char* out, size_t outSize, float temp) {
   snprintf(out, outSize, "%.1fC", temp);
 }
@@ -58,16 +66,24 @@ void ThermalUi::render(DisplayDriver& display,
 
   const uint16_t statusH = settings.landscape ? 44 : 44;
   display.fillRect(0, 0, info.width, statusH, kPanel);
-  display.drawText(12, 14, "LIVE", kText, 1);
-  display.fillRoundRect(48, 16, 10, 10, 5, DisplayDriver::rgb565(34, 197, 94));
-  display.drawText(70, 14, "8.6 fps", kMuted, 1);
 
   const char* orientation = settings.landscape ? "LANDSCAPE" : "PORTRAIT";
-  const uint16_t orientW = settings.landscape ? 112 : 90;
-  const int16_t orientX = info.width - orientW - 66;
+  const uint16_t orientW = orientationWidth(settings.landscape);
+  const int16_t orientX = 8;
   display.fillRoundRect(orientX, 8, orientW, 26, 6, kButton);
   display.drawRoundRect(orientX, 8, orientW, 26, 6, DisplayDriver::rgb565(100, 116, 139));
   display.drawText(orientX + 10, 17, orientation, kText, 1);
+
+  const uint16_t zoomW = zoomWidth(settings.landscape);
+  const int16_t zoomX = orientX + orientW + 8;
+  display.fillRoundRect(zoomX, 8, zoomW, 26, 6, zoomed_ ? kPrimary : kButton);
+  display.drawRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(100, 116, 139));
+  display.drawText(zoomX + 10, 17, zoomed_ ? "ZOOM-" : "ZOOM+", kText, 1);
+
+  const int16_t liveX = zoomX + zoomW + 16;
+  display.drawText(liveX, 14, "LIVE", kText, 1);
+  display.fillRoundRect(liveX + 36, 16, 10, 10, 5, DisplayDriver::rgb565(34, 197, 94));
+  display.drawText(liveX + 58, 14, "8.6 fps", kMuted, 1);
   display.drawTextRight(info.width - 10, 14, storageReady ? "TF OK" : "NO TF", storageReady ? kMuted : kError, 1);
 
   uint16_t viewX;
@@ -88,10 +104,12 @@ void ThermalUi::render(DisplayDriver& display,
 
   display.drawBitmap(viewX, viewY, viewportWidth, viewportHeight, viewportPixels);
 
-  const uint16_t hotX = viewX + static_cast<uint32_t>(stats.hotX) * viewportWidth / frame.width;
-  const uint16_t hotY = viewY + static_cast<uint32_t>(stats.hotY) * viewportHeight / frame.height;
-  const uint16_t coldX = viewX + static_cast<uint32_t>(stats.coldX) * viewportWidth / frame.width;
-  const uint16_t coldY = viewY + static_cast<uint32_t>(stats.coldY) * viewportHeight / frame.height;
+  const uint16_t markerW = stats.markerWidth > 0 ? stats.markerWidth : frame.width;
+  const uint16_t markerH = stats.markerHeight > 0 ? stats.markerHeight : frame.height;
+  const uint16_t hotX = viewX + static_cast<uint32_t>(stats.hotX) * viewportWidth / markerW;
+  const uint16_t hotY = viewY + static_cast<uint32_t>(stats.hotY) * viewportHeight / markerH;
+  const uint16_t coldX = viewX + static_cast<uint32_t>(stats.coldX) * viewportWidth / markerW;
+  const uint16_t coldY = viewY + static_cast<uint32_t>(stats.coldY) * viewportHeight / markerH;
   display.drawRect(hotX > 5 ? hotX - 5 : hotX, hotY > 5 ? hotY - 5 : hotY, 11, 11, kHot);
   display.drawRect(coldX > 5 ? coldX - 5 : coldX, coldY > 5 ? coldY - 5 : coldY, 11, 11, kCold);
 
@@ -163,6 +181,9 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
   }
 
   const uint32_t now = millis();
+  if (now < ignoreTouchUntilMs_) {
+    return false;
+  }
   if (now - lastTouchMs_ < 220) {
     return false;
   }
@@ -210,9 +231,15 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       ignoreSetupTouchUntilMs_ = now + 1500;
       setFeedback("Setup opened");
       return true;
+    case Action::Zoom:
+      zoomed_ = !zoomed_;
+      ignoreTouchUntilMs_ = now + 650;
+      setFeedback(zoomed_ ? "Zoom in" : "Zoom out");
+      return true;
     case Action::Orientation:
       settings.landscape = !settings.landscape;
       display.setLandscape(settings.landscape);
+      ignoreTouchUntilMs_ = now + 750;
       setFeedback(settings.landscape ? "Landscape" : "Portrait");
       return true;
     case Action::SetupCancel:
@@ -258,10 +285,15 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
     return Action::None;
   }
 
-  const uint16_t orientW = landscape ? 112 : 90;
-  const int16_t orientX = screenW - orientW - 66;
+  const uint16_t orientW = orientationWidth(landscape);
+  const int16_t orientX = 8;
   if (contains({orientX, 8, orientW, 26}, x, y)) {
     return Action::Orientation;
+  }
+  const uint16_t zoomW = zoomWidth(landscape);
+  const int16_t zoomX = orientX + orientW + 8;
+  if (contains({zoomX, 8, zoomW, 26}, x, y)) {
+    return Action::Zoom;
   }
 
   const uint16_t buttonY = screenH - (landscape ? 54 : 58);
@@ -334,9 +366,24 @@ void ThermalUi::renderSetup(DisplayDriver& display, const AppSettings& settings)
 void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady) {
   const DisplayInfo info = display.info();
   display.fillScreen(DisplayDriver::rgb565(15, 23, 42));
-  display.fillRect(0, 0, info.width, 38, DisplayDriver::rgb565(250, 204, 21));
-  display.drawText(12, 12, settings.landscape ? "LANDSCAPE" : "PORTRAIT", DisplayDriver::rgb565(15, 23, 42), 1);
-  display.drawTextRight(info.width - 10, 12, storageReady ? "TF OK" : "NO TF", DisplayDriver::rgb565(15, 23, 42), 1);
+  display.fillRect(0, 0, info.width, 44, DisplayDriver::rgb565(250, 204, 21));
+
+  const char* orientation = settings.landscape ? "LANDSCAPE" : "PORTRAIT";
+  const uint16_t orientW = orientationWidth(settings.landscape);
+  const int16_t orientX = 8;
+  display.fillRoundRect(orientX, 8, orientW, 26, 6, DisplayDriver::rgb565(37, 99, 235));
+  display.drawRoundRect(orientX, 8, orientW, 26, 6, DisplayDriver::rgb565(15, 23, 42));
+  display.drawText(orientX + 10, 17, orientation, kText, 1);
+
+  const uint16_t zoomW = zoomWidth(settings.landscape);
+  const int16_t zoomX = orientX + orientW + 8;
+  display.fillRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(37, 99, 235));
+  display.drawRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(15, 23, 42));
+  display.drawText(zoomX + 10, 17, zoomed_ ? "ZOOM-" : "ZOOM+", kText, 1);
+
+  const int16_t waitX = zoomX + zoomW + 16;
+  display.drawText(waitX, 14, "WAIT", DisplayDriver::rgb565(15, 23, 42), 1);
+  display.drawTextRight(info.width - 10, 14, storageReady ? "TF OK" : "NO TF", DisplayDriver::rgb565(15, 23, 42), 1);
 
   const uint16_t panelX = settings.landscape ? 54 : 24;
   const uint16_t panelY = settings.landscape ? 76 : 120;

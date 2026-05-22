@@ -28,6 +28,7 @@ class ThermalUi {
                    uint16_t viewportHeight);
 
   PaletteMode palette() const { return palette_; }
+  bool zoomed() const { return zoomed_; }
   bool setupActive() const { return setupActive_; }
 
  private:
@@ -37,6 +38,7 @@ class ThermalUi {
     Ffc,
     Capture,
     Setup,
+    Zoom,
     Orientation,
     SetupCancel,
     SetupSave,
@@ -69,8 +71,10 @@ class ThermalUi {
   bool contains(const Rect& rect, uint16_t x, uint16_t y) const;
 
   PaletteMode palette_ = PaletteMode::Ironbow;
+  bool zoomed_ = false;
   bool setupActive_ = false;
   uint32_t lastTouchMs_ = 0;
+  uint32_t ignoreTouchUntilMs_ = 0;
   uint32_t ignoreSetupTouchUntilMs_ = 0;
   char feedback_[40] = "Ready";
   uint32_t feedbackUntilMs_ = 0;

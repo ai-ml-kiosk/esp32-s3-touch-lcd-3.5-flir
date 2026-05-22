@@ -63,11 +63,12 @@
   <rect class="screen" x="344" y="156" width="258" height="510" rx="4"/>
 
   <rect class="panel" x="344" y="156" width="258" height="36"/>
-  <text class="label" x="358" y="179">LIVE</text>
-  <circle cx="399" cy="174" r="5" fill="#22c55e"/>
-  <text class="small" x="424" y="179">8.6 fps</text>
-  <rect class="button" x="516" y="162" width="78" height="22" rx="5"/>
-  <text class="buttonText" x="555" y="179" text-anchor="middle">PORTRAIT</text>
+  <rect class="button" x="352" y="162" width="78" height="22" rx="5"/>
+  <text class="buttonText" x="391" y="179" text-anchor="middle">PORTRAIT</text>
+  <rect class="button" x="438" y="162" width="56" height="22" rx="5"/>
+  <text class="buttonText" x="466" y="179" text-anchor="middle">ZOOM+</text>
+  <text class="label" x="510" y="179">LIVE</text>
+  <circle cx="552" cy="174" r="5" fill="#22c55e"/>
 
   <rect x="344" y="208" width="228" height="334" fill="url(#thermal)"/>
   <rect x="344" y="208" width="228" height="334" fill="url(#hotBlob)" opacity="0.82"/>
@@ -110,11 +111,11 @@
   <rect class="button" x="542" y="624" width="60" height="24" rx="5"/>
   <text class="buttonText" x="572" y="641" text-anchor="middle">SETUP</text>
 
-  <path class="line" d="M602 174 H742"/>
+  <path class="line" d="M552 174 H742"/>
   <text class="calloutTitle" x="758" y="168">Status bar</text>
   <text class="callout" x="758" y="193">
-    <tspan x="758" dy="0">live state, frame rate,</tspan>
-    <tspan x="758" dy="20">orientation toggle</tspan>
+    <tspan x="758" dy="0">left orientation and</tspan>
+    <tspan x="758" dy="20">zoom controls</tspan>
   </text>
 
   <path class="line" d="M572 324 H742"/>
@@ -159,11 +160,12 @@
     <tspan x="82" dy="20">reduces drift and banding</tspan>
   </text>
 
-  <path class="line" d="M555 184 V684 H742"/>
-  <text class="calloutTitle" x="758" y="666">Orientation status</text>
-  <text class="callout" x="758" y="691">
-    <tspan x="758" dy="0">tap PORTRAIT to</tspan>
-    <tspan x="758" dy="20">return to landscape</tspan>
+  <path class="line-left" d="M391 162 V112 H240"/>
+  <text class="calloutTitle" x="82" y="94">Orientation And Zoom</text>
+  <text class="callout" x="82" y="119">
+    <tspan x="82" dy="0">tap PORTRAIT to</tspan>
+    <tspan x="82" dy="20">return to landscape;</tspan>
+    <tspan x="82" dy="20">tap ZOOM+ or ZOOM-</tspan>
   </text>
 
   <path class="line" d="M504 648 V760 H742"/>

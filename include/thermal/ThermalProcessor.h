@@ -10,7 +10,9 @@ class ThermalProcessor {
                     uint16_t* out,
                     uint16_t outWidth,
                     uint16_t outHeight,
-                    ThermalStats* stats) const;
+                    ThermalStats* stats,
+                    bool zoomed = false,
+                    bool landscape = true) const;
 
  private:
   static float rawToCelsius(uint16_t raw);
