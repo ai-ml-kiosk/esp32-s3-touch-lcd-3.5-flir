@@ -63,10 +63,14 @@
   <rect class="screen" x="246" y="184" width="500" height="310" rx="4"/>
 
   <rect class="panel" x="246" y="184" width="500" height="36"/>
-  <rect class="button" x="254" y="191" width="116" height="22" rx="5"/>
-  <text class="buttonText" x="312" y="207" text-anchor="middle">LANDSCAPE</text>
+  <rect x="258" y="196" width="28" height="16" rx="3" fill="none" stroke="#f8fafc" stroke-width="2"/>
+  <rect x="263" y="200" width="18" height="8" fill="#475569"/>
+  <rect x="283" y="202" width="1" height="4" fill="#f8fafc"/>
   <rect class="button" x="378" y="191" width="70" height="22" rx="5"/>
-  <text class="buttonText" x="413" y="207" text-anchor="middle">ZOOM+</text>
+  <rect x="401" y="196" width="13" height="13" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="413" y="208" width="8" height="3" fill="#e5e7eb"/>
+  <rect x="405" y="201" width="6" height="2" fill="#e5e7eb"/>
+  <rect x="407" y="199" width="2" height="6" fill="#e5e7eb"/>
   <text class="label" x="464" y="207">LIVE</text>
   <circle cx="506" cy="202" r="5" fill="#22c55e"/>
   <text class="small" x="532" y="207">8.6 fps</text>
@@ -110,14 +114,30 @@
     <tspan class="label" x="711" dy="20">IRON</tspan>
   </text>
 
-  <rect class="button" x="246" y="468" width="116" height="20" rx="5"/>
-  <text class="buttonText" x="304" y="483" text-anchor="middle">PAL</text>
-  <rect class="button" x="374" y="468" width="116" height="20" rx="5"/>
-  <text class="buttonText" x="432" y="483" text-anchor="middle">FFC</text>
-  <rect class="button" x="502" y="468" width="116" height="20" rx="5"/>
-  <text class="buttonText" x="560" y="483" text-anchor="middle">CAP</text>
-  <rect class="button" x="630" y="468" width="116" height="20" rx="5"/>
-  <text class="buttonText" x="688" y="483" text-anchor="middle">SETUP</text>
+  <rect class="button" x="246" y="468" width="92" height="20" rx="5"/>
+  <rect x="280" y="473" width="8" height="4" fill="#ef4444"/>
+  <rect x="290" y="473" width="8" height="4" fill="#facc15"/>
+  <rect x="280" y="479" width="8" height="4" fill="#22c55e"/>
+  <rect x="290" y="479" width="8" height="4" fill="#3b82f6"/>
+  <rect x="278" y="471" width="22" height="14" fill="none" stroke="#e5e7eb" stroke-width="1"/>
+  <rect class="button" x="348" y="468" width="92" height="20" rx="5"/>
+  <rect x="382" y="472" width="24" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="385" y="475" width="18" height="2.5" fill="#e5e7eb"/>
+  <rect x="385" y="480" width="18" height="2.5" fill="#64748b"/>
+  <rect class="button" x="450" y="468" width="92" height="20" rx="5"/>
+  <rect x="483" y="475" width="26" height="12" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="488" y="471" width="9" height="4" fill="#e5e7eb"/>
+  <rect x="492" y="478" width="8" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
+  <rect class="button" x="552" y="468" width="92" height="20" rx="5"/>
+  <rect x="586" y="472" width="24" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <polygon points="591,475 591,483 598,479" fill="#e5e7eb"/>
+  <rect x="606" y="475" width="8" height="10" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
+  <rect class="button" x="654" y="468" width="92" height="20" rx="5"/>
+  <rect x="694" y="475" width="12" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="698" y="470" width="4" height="5" fill="#e5e7eb"/>
+  <rect x="698" y="483" width="4" height="5" fill="#e5e7eb"/>
+  <rect x="688" y="477" width="6" height="4" fill="#e5e7eb"/>
+  <rect x="706" y="477" width="6" height="4" fill="#e5e7eb"/>
 
   <path class="line" d="M584 202 H890"/>
   <text class="calloutTitle" x="905" y="196">Status bar</text>
@@ -141,9 +161,9 @@
     <tspan x="905" dy="20">temperature range</tspan>
   </text>
 
-  <path class="line" d="M725 398 L820 398 L820 466 H890"/>
-  <text class="calloutTitle" x="905" y="466">Readouts</text>
-  <text class="callout" x="905" y="491">
+  <path class="line" d="M725 398 L820 398 L820 448 H890"/>
+  <text class="calloutTitle" x="905" y="448">Readouts</text>
+  <text class="callout" x="905" y="473">
     <tspan x="905" dy="0">center temperature,</tspan>
     <tspan x="905" dy="20">range mode, RGB666 palette</tspan>
   </text>
@@ -155,32 +175,46 @@
     <tspan x="58" dy="20">over live frames</tspan>
   </text>
 
-  <path class="line-left" d="M304 488 V548 H240"/>
+  <path class="line-left" d="M292 488 V548 H240"/>
   <text class="calloutTitle" x="58" y="530">PAL button</text>
   <text class="callout" x="58" y="555">
     <tspan x="58" dy="0">Ironbow, White Hot,</tspan>
     <tspan x="58" dy="20">Black Hot, Histogram</tspan>
   </text>
 
-  <path class="line-left" d="M432 488 V624 H240"/>
+  <path class="line-left" d="M394 488 V624 H240"/>
   <text class="calloutTitle" x="58" y="606">FFC button</text>
   <text class="callout" x="58" y="631">
     <tspan x="58" dy="0">flat-field correction</tspan>
     <tspan x="58" dy="20">reduces drift and banding</tspan>
   </text>
 
-  <path class="line" d="M560 488 V548 H890"/>
-  <text class="calloutTitle" x="905" y="530">CAP button</text>
-  <text class="callout" x="905" y="555">
-    <tspan x="905" dy="0">saves raw frame and</tspan>
-    <tspan x="905" dy="20">screen capture to TF</tspan>
+  <path class="line" d="M496 488 V530 H890"/>
+  <text class="calloutTitle" x="905" y="512">CAP button</text>
+  <text class="callout" x="905" y="537">
+    <tspan x="905" dy="0">saves timestamped BMP</tspan>
+    <tspan x="905" dy="20">and optional raw frame</tspan>
   </text>
 
-  <path class="line-left" d="M312 191 V118 H132"/>
-  <text class="calloutTitle" x="58" y="98">Orientation And Zoom</text>
-  <text class="callout" x="58" y="123">
-    <tspan x="58" dy="0">tap LANDSCAPE to</tspan>
-    <tspan x="58" dy="20">switch orientation;</tspan>
+  <path class="line" d="M598 488 V600 H890"/>
+  <text class="calloutTitle" x="905" y="582">Review/Delete button</text>
+  <text class="callout" x="905" y="607">
+    <tspan x="905" dy="0">opens latest capture</tspan>
+    <tspan x="905" dy="20">review and delete action</tspan>
+  </text>
+
+  <path class="line" d="M700 488 V674 H890"/>
+  <text class="calloutTitle" x="905" y="656">SETUP button</text>
+  <text class="callout" x="905" y="681">
+    <tspan x="905" dy="0">opens settings for path,</tspan>
+    <tspan x="905" dy="20">idle, rotation, raw save</tspan>
+  </text>
+
+  <path class="line-left" d="M312 191 V150 H132"/>
+  <text class="calloutTitle" x="58" y="130">Auto-Rotation And Zoom</text>
+  <text class="callout" x="58" y="155">
+    <tspan x="58" dy="0">QMI8658 gravity vector</tspan>
+    <tspan x="58" dy="20">selects orientation;</tspan>
     <tspan x="58" dy="20">tap ZOOM+ or ZOOM-</tspan>
   </text>
 

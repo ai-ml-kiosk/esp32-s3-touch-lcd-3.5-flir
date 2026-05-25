@@ -28,7 +28,8 @@ From `ui/thermal_ui.py`:
 - Sensitivity adjustment.
 - Hot/cold spot detection.
 - Capture control.
-- Orientation state and zoom state. Landscape is the default.
+- Auto-rotation state from the onboard QMI8658 and zoom state. Landscape is the
+  default.
 - Persisted viewer settings.
 
 ## Proposed ESP32-S3 Components
@@ -94,7 +95,7 @@ Then add controls in this order:
 
 1. Touch read and calibration.
 2. Palette/range controls.
-3. Orientation toggle.
+3. QMI8658 auto-rotation with 500 ms debounce.
 4. Capture to TF card.
 5. Settings persistence.
 6. Optional manual FFC button.

@@ -5,10 +5,13 @@
 #include <Wire.h>
 #include <cstring>
 #include <esp_heap_caps.h>
+#include <sys/time.h>
+#include <time.h>
 #include <strings.h>
 
 #include "board/BoardPins.h"
 #include "board/DisplayDriver.h"
+#include "board/ImuDriver.h"
 #include "board/TouchDriver.h"
 #include "flir/LeptonVospi.h"
 #include "flir/SyntheticLepton.h"
@@ -34,10 +37,15 @@ constexpr uint16_t kLeptonCciResponseOk = 0x0000;
 constexpr uint16_t kLeptonOemPowerDownRunCommand = 0x4802;
 constexpr uint16_t kLeptonOemRebootRunCommand = 0x4842;
 constexpr uint32_t kFrameIntervalMs = 116;
+constexpr uint32_t kImuPollIntervalMs = 100;
+constexpr uint32_t kAutoRotationDebounceMs = 500;
+constexpr int32_t kAutoRotationMinAccel = 2500;
+constexpr int32_t kAutoRotationAxisMargin = 800;
 constexpr size_t kSerialCommandCapacity = 48;
 
 DisplayDriver display;
 TouchDriver touch;
+ImuDriver imu;
 TwoWire flirCciWire(1);
 SettingsStore settingsStore;
 CaptureStorage storage;
@@ -57,9 +65,19 @@ uint16_t viewportHeight = 0;
 uint32_t lastFrameMs = 0;
 uint32_t lastStatusMs = 0;
 uint32_t lastUserActivityMs = 0;
+uint32_t lastImuPollMs = 0;
+uint32_t lastTouchActionMs = 0;
+uint32_t orientationCandidateSinceMs = 0;
+ImuAccelRaw lastImuAccel;
 bool needsRender = true;
 bool leptonLowPower = false;
 bool displayOffForIdleSleep = false;
+bool touchWasActive = false;
+bool orientationCandidateLandscape = true;
+bool hasOrientationCandidate = false;
+bool lastImuReadOk = false;
+bool lastImuClassified = false;
+bool lastImuLandscape = true;
 uint32_t leptonLowPowerSinceMs = 0;
 char serialCommandBuffer[kSerialCommandCapacity] = {};
 size_t serialCommandLength = 0;
@@ -75,6 +93,7 @@ void printPinMap() {
                 BoardPins::LCD_QSPI_D2,
                 BoardPins::LCD_QSPI_D3);
   Serial.printf("Touch/board I2C SDA GPIO%d SCL GPIO%d\n", BoardPins::I2C_SDA, BoardPins::I2C_SCL);
+  Serial.println("Board IMU QMI8658 on internal I2C bus for auto-rotation");
   Serial.printf("TF card SD_MMC CLK GPIO%d CMD GPIO%d D0 GPIO%d\n", BoardPins::TF_CLK, BoardPins::TF_CMD, BoardPins::TF_D0);
   Serial.printf("FLIR VoSPI SCLK GPIO%d\n", Pins::FLIR_SPI_SCLK);
   Serial.printf("FLIR VoSPI MISO GPIO%d\n", Pins::FLIR_SPI_MISO);
@@ -82,6 +101,56 @@ void printPinMap() {
   Serial.printf("FLIR VoSPI CS   GPIO%d\n", Pins::FLIR_SPI_CS);
   Serial.printf("FLIR CCI SDA    GPIO%d\n", Pins::FLIR_CCI_SDA);
   Serial.printf("FLIR CCI SCL    GPIO%d\n", Pins::FLIR_CCI_SCL);
+}
+
+int monthFromBuildDate(const char* month) {
+  static constexpr const char* kMonths = "JanFebMarAprMayJunJulAugSepOctNovDec";
+  const char* found = strstr(kMonths, month);
+  if (found == nullptr) {
+    return 1;
+  }
+  return static_cast<int>((found - kMonths) / 3) + 1;
+}
+
+void seedSystemTimeFromBuild() {
+  tm buildTime = {};
+  char month[4] = {};
+  int day = 1;
+  int year = 2026;
+  int hour = 0;
+  int minute = 0;
+  int second = 0;
+
+  if (sscanf(__DATE__, "%3s %d %d", month, &day, &year) != 3 ||
+      sscanf(__TIME__, "%d:%d:%d", &hour, &minute, &second) != 3) {
+    Serial.println("Build time parse failed; capture names may use sequence fallback");
+    return;
+  }
+
+  buildTime.tm_year = year - 1900;
+  buildTime.tm_mon = monthFromBuildDate(month) - 1;
+  buildTime.tm_mday = day;
+  buildTime.tm_hour = hour;
+  buildTime.tm_min = minute;
+  buildTime.tm_sec = second;
+  buildTime.tm_isdst = -1;
+
+  const time_t epoch = mktime(&buildTime);
+  if (epoch <= 0) {
+    Serial.println("Build time epoch invalid; capture names may use sequence fallback");
+    return;
+  }
+
+  timeval now = {};
+  now.tv_sec = epoch;
+  settimeofday(&now, nullptr);
+  Serial.printf("System time seeded from firmware build: %04d-%02d-%02d %02d:%02d:%02d\n",
+                year,
+                buildTime.tm_mon + 1,
+                day,
+                hour,
+                minute,
+                second);
 }
 
 void scanI2cBus() {
@@ -391,6 +460,20 @@ void printRuntimeStatus() {
                 leptonCciPresent() ? "yes" : "no",
                 Pins::FLIR_CCI_SDA,
                 Pins::FLIR_CCI_SCL);
+  Serial.printf(" imu=%s accel=(%d,%d,%d)",
+                imu.ready() ? (lastImuReadOk ? "ok" : "no-read") : "missing",
+                lastImuAccel.x,
+                lastImuAccel.y,
+                lastImuAccel.z);
+  if (lastImuReadOk) {
+    Serial.printf(" imu_orientation=%s",
+                  lastImuClassified ? (lastImuLandscape ? "landscape" : "portrait") : "flat/uncertain");
+    if (hasOrientationCandidate) {
+      Serial.printf(" candidate=%s candidate_ms=%lu",
+                    orientationCandidateLandscape ? "landscape" : "portrait",
+                    static_cast<unsigned long>(millis() - orientationCandidateSinceMs));
+    }
+  }
 #if !defined(FLIR_USE_SYNTHETIC_FRAMES)
   Serial.printf(" vospi_status=%d sync_loss=%lu recovery=%lu",
                 static_cast<int>(lepton.lastStatus()),
@@ -457,8 +540,8 @@ uint32_t inactivitySleepMs() {
 
 bool allocateViewportBuffer() {
   const DisplayInfo info = display.info();
-  viewportWidth = settings.landscape ? 420 : 304;
-  viewportHeight = settings.landscape ? 208 : 334;
+  viewportWidth = settings.landscape ? 420 : info.width - 44;
+  viewportHeight = settings.landscape ? 208 : 318;
   if (viewportWidth > info.width) {
     viewportWidth = info.width;
   }
@@ -492,8 +575,97 @@ void updateOrientationIfNeeded(bool previousLandscape) {
   display.setLandscape(settings.landscape);
   const DisplayInfo info = display.info();
   touch.setOrientation(settings.landscape, info.width, info.height);
+  touchWasActive = false;
+  lastTouchActionMs = millis();
   allocateViewportBuffer();
   needsRender = true;
+}
+
+bool classifyLandscapeFromGravity(const ImuAccelRaw& accel, bool* landscape) {
+  if (landscape == nullptr) {
+    return false;
+  }
+
+  const int32_t absX = abs(static_cast<int32_t>(accel.x));
+  const int32_t absY = abs(static_cast<int32_t>(accel.y));
+  const int32_t dominant = absX > absY ? absX : absY;
+  const int32_t difference = abs(absX - absY);
+
+  if (dominant < kAutoRotationMinAccel || difference < kAutoRotationAxisMargin) {
+    return false;
+  }
+
+  *landscape = absY > absX;
+  return true;
+}
+
+bool settingsEqual(const AppSettings& left, const AppSettings& right) {
+  return strcmp(left.savePath, right.savePath) == 0 &&
+         strcmp(left.locale, right.locale) == 0 &&
+         strcmp(left.dateFormat, right.dateFormat) == 0 &&
+         strcmp(left.timeFormat, right.timeFormat) == 0 &&
+         left.landscape == right.landscape &&
+         left.autoRotate == right.autoRotate &&
+         left.inactivitySleepSeconds == right.inactivitySleepSeconds &&
+         left.temperatureOffsetTenths == right.temperatureOffsetTenths &&
+         left.includeFilenameInCapture == right.includeFilenameInCapture &&
+         left.saveRawCapture == right.saveRawCapture;
+}
+
+void updateAutoOrientation() {
+  const uint32_t now = millis();
+  if (!settings.autoRotate || !imu.ready() || ui.setupActive() || now - lastImuPollMs < kImuPollIntervalMs) {
+    return;
+  }
+  lastImuPollMs = now;
+
+  ImuAccelRaw accel;
+  bool candidateLandscape = settings.landscape;
+  lastImuReadOk = imu.readAccel(accel);
+  if (!lastImuReadOk) {
+    lastImuClassified = false;
+    hasOrientationCandidate = false;
+    orientationCandidateSinceMs = 0;
+    return;
+  }
+  lastImuAccel = accel;
+  lastImuClassified = classifyLandscapeFromGravity(accel, &candidateLandscape);
+  lastImuLandscape = candidateLandscape;
+  if (!lastImuClassified) {
+    hasOrientationCandidate = false;
+    orientationCandidateSinceMs = 0;
+    return;
+  }
+
+  if (candidateLandscape == settings.landscape) {
+    hasOrientationCandidate = false;
+    orientationCandidateSinceMs = 0;
+    return;
+  }
+
+  if (!hasOrientationCandidate || orientationCandidateLandscape != candidateLandscape) {
+    hasOrientationCandidate = true;
+    orientationCandidateLandscape = candidateLandscape;
+    orientationCandidateSinceMs = now;
+    return;
+  }
+
+  if (now - orientationCandidateSinceMs < kAutoRotationDebounceMs) {
+    return;
+  }
+
+  const bool previousLandscape = settings.landscape;
+  settings.landscape = candidateLandscape;
+  Serial.printf("Auto-rotation: accel=(%d,%d,%d) -> %s\n",
+                accel.x,
+                accel.y,
+                accel.z,
+                settings.landscape ? "landscape" : "portrait");
+  ui.showStatus(settings.landscape ? "Auto landscape" : "Auto portrait");
+  updateOrientationIfNeeded(previousLandscape);
+  settingsStore.save(settings);
+  hasOrientationCandidate = false;
+  orientationCandidateSinceMs = 0;
 }
 
 void renderFrame() {
@@ -507,7 +679,15 @@ void renderFrame() {
     stats.maxC += offsetC;
     stats.centerC += offsetC;
   }
-  ui.render(display, frame, stats, viewportPixels, viewportWidth, viewportHeight, settings, storage.isMounted());
+  ui.render(display,
+            frame,
+            stats,
+            viewportPixels,
+            viewportWidth,
+            viewportHeight,
+            settings,
+            storage.isMounted(),
+            storage.lastCaptureBasePath());
   display.flush();
 }
 
@@ -520,6 +700,7 @@ void setup() {
   delay(1500);
 
   printPinMap();
+  seedSystemTimeFromBuild();
   holdLeptonDeselected();
   settingsStore.begin();
   settings = settingsStore.load();
@@ -534,10 +715,11 @@ void setup() {
   }
   const DisplayInfo displayInfo = display.info();
   touch.begin(settings.landscape, displayInfo.width, displayInfo.height);
+  imu.begin();
   storage.begin();
   lepton.begin();
   ui.begin(display);
-  ui.render(display, frame, stats, nullptr, 0, 0, settings, storage.isMounted());
+  ui.render(display, frame, stats, nullptr, 0, 0, settings, storage.isMounted(), storage.lastCaptureBasePath());
   display.flush();
   allocateViewportBuffer();
 
@@ -558,10 +740,19 @@ void loop() {
   processSerialInput();
 
   TouchPoint touchPoint;
-  const bool touchActive = touch.read(touchPoint) && touchPoint.pressed;
+  const bool touchSampled = touch.read(touchPoint);
+  const bool touchActive = touchSampled && touchPoint.pressed;
+  const bool touchPressedEdge = touchActive && !touchWasActive;
+  if (touchSampled) {
+    touchWasActive = touchActive;
+  }
+
   bool touchConsumedForWake = false;
   if (touchActive) {
     lastUserActivityMs = millis();
+  }
+
+  if (touchPressedEdge) {
     if (leptonLowPower) {
       Serial.println("Touch activity detected while Lepton is asleep; waking");
       if (displayOffForIdleSleep) {
@@ -592,20 +783,29 @@ void loop() {
     }
   }
 
+  const bool touchActionReady = touchActive && touchPressedEdge;
+  if (touchActionReady && !touchConsumedForWake && !leptonLowPower) {
+    const AppSettings previousSettings = settings;
+    if (ui.handleTouch(touchPoint, settings, display, storage, frame, stats, viewportPixels, viewportWidth, viewportHeight)) {
+      lastTouchActionMs = now;
+      updateOrientationIfNeeded(previousLandscape);
+      if (!settingsEqual(previousSettings, settings)) {
+        settingsStore.save(settings);
+      }
+      lastUserActivityMs = millis();
+      needsRender = true;
+    }
+  }
+
+  if (!touchActive) {
+    updateAutoOrientation();
+  }
+
   if (!leptonLowPower && now - lastFrameMs >= kFrameIntervalMs) {
     lastFrameMs = now;
     if (lepton.readFrame(frame)) {
       renderFrame();
       needsRender = false;
-    }
-  }
-
-  if (touchActive && !touchConsumedForWake && !leptonLowPower) {
-    if (ui.handleTouch(touchPoint, settings, display, storage, frame, viewportPixels, viewportWidth, viewportHeight)) {
-      updateOrientationIfNeeded(previousLandscape);
-      settingsStore.save(settings);
-      lastUserActivityMs = millis();
-      needsRender = true;
     }
   }
 

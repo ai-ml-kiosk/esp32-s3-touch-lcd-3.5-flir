@@ -65,9 +65,11 @@ independent `GPIO17/GPIO18` map.
 
 - The Lepton image is 80x60 and low frame-rate compared with the display.
 - The UI should default to landscape orientation on the built-in 480x320 display.
-  It should still support portrait orientation through an app-level orientation
-  toggle. Scale the thermal image while preserving aspect ratio or deliberately
-  using a fill mode.
+  On the Type B board variant, orientation changes are detected from the onboard
+  QMI8658 accelerometer on the internal I2C bus. The app should auto-rotate
+  after a sustained 500 ms gravity-vector change and must update display
+  rendering orientation and touch coordinate mapping together. Scale the thermal
+  image while preserving aspect ratio or deliberately using a fill mode.
 - The final display target should use the AXS15231B QSPI display path. Preserve
   palette calculations internally at high precision, then pack to RGB565 unless
   the selected driver explicitly supports RGB666/262K frame pushes. The

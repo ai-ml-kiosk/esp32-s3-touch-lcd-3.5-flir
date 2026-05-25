@@ -33,10 +33,15 @@ AppSettings SettingsStore::load() {
   preferences.getString("dateFmt", settings.dateFormat, sizeof(settings.dateFormat));
   preferences.getString("timeFmt", settings.timeFormat, sizeof(settings.timeFormat));
   settings.landscape = preferences.getBool("landscape", settings.landscape);
+  settings.autoRotate = preferences.getBool("autoRot", settings.autoRotate);
   settings.inactivitySleepSeconds =
       preferences.getUShort("idleSleep", settings.inactivitySleepSeconds);
   settings.temperatureOffsetTenths =
       static_cast<int8_t>(preferences.getShort("tempOff10", settings.temperatureOffsetTenths));
+  settings.includeFilenameInCapture =
+      preferences.getBool("capName", settings.includeFilenameInCapture);
+  settings.saveRawCapture =
+      preferences.getBool("saveRaw", settings.saveRawCapture);
   preferences.end();
 
   if (settings.savePath[0] != '/') {
@@ -62,8 +67,11 @@ bool SettingsStore::save(const AppSettings& settings) {
   preferences.putString("dateFmt", settings.dateFormat);
   preferences.putString("timeFmt", settings.timeFormat);
   preferences.putBool("landscape", settings.landscape);
+  preferences.putBool("autoRot", settings.autoRotate);
   preferences.putUShort("idleSleep", settings.inactivitySleepSeconds);
   preferences.putShort("tempOff10", settings.temperatureOffsetTenths);
+  preferences.putBool("capName", settings.includeFilenameInCapture);
+  preferences.putBool("saveRaw", settings.saveRawCapture);
   preferences.end();
   return true;
 }

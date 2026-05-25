@@ -8,6 +8,9 @@ struct AppSettings {
   char dateFormat[16] = "YYYY-MM-DD";
   char timeFormat[16] = "HH:mm:ss";
   bool landscape = true;
+  bool autoRotate = true;
   uint16_t inactivitySleepSeconds = 0;
   int8_t temperatureOffsetTenths = 0;
+  bool includeFilenameInCapture = true;
+  bool saveRawCapture = true;
 };

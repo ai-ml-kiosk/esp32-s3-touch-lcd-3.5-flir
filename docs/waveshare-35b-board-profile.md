@@ -18,6 +18,7 @@ depends on the physical Waveshare ESP32-S3-Touch-LCD-3.5B hardware.
 | Display driver IC | AXS15231B |
 | Display interface | QSPI, not parallel RGB |
 | Touch interface | I2C through the AXS15231B touch path |
+| Motion sensor | QMI8658 6-axis IMU on internal I2C |
 | Onboard storage | TF card socket |
 | Useful vendor demos | `07_sd_test`, `08_gfx_helloworld`, `09_lvgl_arduino_v8`, `10_lvgl_arduino_v9` |
 
@@ -109,7 +110,24 @@ class TouchDriver {
 ```
 
 The UI layer owns mapping touch coordinates to controls such as `PAL`, `FFC`,
-`CAP`, `SETUP`, and the status-bar orientation label.
+`CAP`, `SETUP`, and `ZOOM`. The orientation label is an indicator only;
+orientation changes come from QMI8658 auto-rotation.
+
+## IMU Auto-Rotation Direction
+
+The Type B board includes a QMI8658 6-axis IMU on the internal I2C bus. Firmware
+should initialize the accelerometer and classify the raw gravity vector into
+landscape or portrait. On the tested board mounting, landscape is Y-axis
+dominant and portrait is X-axis dominant. When a new orientation remains
+dominant for at least 500 ms, the app should:
+
+1. Update the display orientation matrix.
+2. Reinitialize touch coordinate mapping for the new display size.
+3. Reallocate the thermal viewport buffer.
+4. Re-render the active screen and persist the selected orientation.
+
+Do not use a software-only orientation toggle button or an external orientation
+pin trigger for this board profile.
 
 ## TF Card Direction
 

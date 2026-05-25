@@ -19,27 +19,29 @@ not a host-computer dialog.
 
 ## Initial Data
 
-The setup screen should show live firmware state:
+The setup screen shows live firmware state from `AppSettings`:
 
 | Field | Source |
 |---|---|
-| Date/time format | Firmware settings. These affect display labels first; timestamped filenames are added only after a clock source is enabled. |
-| Locale/region | Firmware settings, for example `en_AU`, not an OS locale string. |
 | Save path | Active TF-card capture directory, default `/flir`. |
+| Auto Rotate | Whether QMI8658 gravity-vector auto-rotation is enabled. |
+| Orientation | Manual `Landscape` / `Portrait` choice used when Auto Rotate is off. |
 | Idle sleep | Touch inactivity timeout in seconds. `Off` disables automatic Lepton sleep. |
 | Calibration offset | Temperature display offset in degrees C. |
+| Show Filename | Whether saved BMP images include the filename in the bottom footer. |
+| Save raw frame | Whether `CAP` writes the binary `.raw` file next to the BMP. |
 
 If no settings have been saved yet, firmware should use these defaults:
 
 | Setting | Default |
 |---|---|
 | Save path | `/flir` |
-| Locale/region | `en_AU` or build-time default |
-| Date format | `YYYY-MM-DD` |
-| Time format | `HH:mm:ss` |
-| Orientation | Landscape |
+| Auto Rotate | `On` |
+| Orientation | `Landscape` when Auto Rotate is off |
 | Idle sleep | `Off` / `0` seconds |
 | Calibration offset | `+0.0C` |
+| Show Filename | `On` |
+| Save raw frame | `On` |
 
 ## Touch Inactivity Sleep
 
@@ -121,16 +123,53 @@ SETUP Save
 CAP pressed
   -> CaptureStorage reads Settings.savePath
   -> CaptureStorage validates/mount-checks TF card
-  -> raw frame and image file are written under that directory
+  -> raw frame and annotated image file are written under that directory
 ```
 
-First release filename policy:
+Captured file base names use the following format when the ESP32 system clock is
+valid:
 
-- Use monotonic sequence filenames such as `frame_00001.raw` and
-  `frame_00001.bmp`.
-- Do not require RTC, NTP, or manually entered date/time before capture works.
-- Add timestamped filenames later after the RTC or network time source is
-  implemented and validated.
+```text
+thermal_YYYYmmddHHMMSS
+```
+
+For example:
+
+```text
+thermal_20260525143005.bmp
+thermal_20260525143005.raw
+```
+
+If the ESP32 clock has not been set by an RTC or network time source, firmware
+falls back to monotonic names such as `thermal_00001`. If two captures happen
+within the same second, the second and later captures receive a suffix such as
+`_02`.
+
+Saved BMP images include a black footer below the thermal image. The first
+footer line always records captured temperature details:
+
+```text
+HIGH <temp>C  LOW <temp>C  CTR <temp>C
+```
+
+The second footer line is controlled by the setup `Show Filename` toggle:
+
+```text
+FILE frame_00001.bmp
+```
+
+Raw `.raw` files remain unannotated binary Lepton data. The setup `Raw` switch
+controls whether raw files are written: green/right means raw saving is enabled,
+gray/left means only the annotated BMP is saved. The annotated BMP is always
+written.
+
+The current firmware seeds system time from the build timestamp until a real
+RTC/NTP source is added, so filenames use `thermal_YYYYmmddHHMMSS` during normal
+operation and fall back to monotonic `thermal_00001` style names only if no valid
+time source is available.
+
+The runtime capture-review icon opens the latest saved capture path. Its Delete
+action removes the matching `.bmp` and optional `.raw` pair from the TF card.
 
 ## Proposed C++ Modules
 
@@ -140,19 +179,19 @@ First release filename policy:
 | `setup_ui` | On-device setup screen, field editing, Save/Cancel actions. |
 | `capture_storage` | Capture file naming and writes under `Settings.savePath`. |
 | `touch_driver` | Touch events mapped to setup controls when setup is active. |
-| `thermal_ui` | Opens setup screen and resumes thermal viewer after Save/Cancel. |
+| `thermal_ui` | Opens setup screen, capture review/delete, and resumes thermal viewer after Save/Cancel. |
 
 ## Suggested Types
 
 ```cpp
 struct AppSettings {
   char savePath[64] = "/flir";
-  char locale[16] = "en_AU";
-  char dateFormat[16] = "YYYY-MM-DD";
-  char timeFormat[16] = "HH:mm:ss";
   bool landscape = true;
+  bool autoRotate = true;
   uint16_t inactivitySleepSeconds = 0;
   int8_t temperatureOffsetTenths = 0;
+  bool includeFilenameInCapture = true;
+  bool saveRawCapture = true;
 };
 
 enum class SetupResult {
@@ -164,21 +203,30 @@ enum class SetupResult {
 
 ## UI Layout
 
-The first implementation can be simple and touch-friendly:
+The implemented setup overlay is compact and touch-friendly. In landscape it
+uses two columns; in portrait it uses a single scrollable column with fixed
+Cancel/Save actions at the bottom.
 
 ```text
 +------------------------------------------------+
 | SETUP                                          |
-| Date format: YYYY-MM-DD                        |
-| Time format: HH:mm:ss                          |
-| Locale:      en_AU                             |
-| Save path:   /flir                             |
-| Idle sleep:  Off                               |
-| Cal:         +0.0C                             |
+| Path:       /flir        Auto:       [ ON ]    |
+| Idle:       Off          Orient:     Auto      |
+| Cal:        +0.0C        Show Name:  [ ON ]    |
+|                         Raw:        [ ON ]     |
 |                                                |
 | [Cancel]                              [Save]   |
 +------------------------------------------------+
 ```
+
+Boolean fields are rendered as toggle switches:
+
+- Green track, knob right, `ON`: enabled.
+- Gray track, knob left, `OFF`: disabled.
+
+The setup panel must remain scrollable as future settings are added. Save and
+Cancel stay fixed at the bottom of the setup panel while field rows can scroll
+within the content area.
 
 For text entry on the board, start with a small set of safe path presets:
 

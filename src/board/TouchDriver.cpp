@@ -14,8 +14,14 @@ bool TouchDriver::begin(bool landscape, uint16_t width, uint16_t height) {
 }
 
 void TouchDriver::setOrientation(bool landscape, uint16_t width, uint16_t height) {
+  (void)width;
+  (void)height;
   const uint16_t rotation = landscape ? 1 : 0;
-  bsp_touch_init(&Wire, -1, rotation, width, height);
+  bsp_touch_init(&Wire,
+                 -1,
+                 rotation,
+                 landscape ? BoardPins::LCD_LANDSCAPE_WIDTH : BoardPins::LCD_PHYSICAL_WIDTH,
+                 landscape ? BoardPins::LCD_LANDSCAPE_HEIGHT : BoardPins::LCD_PHYSICAL_HEIGHT);
 }
 
 bool TouchDriver::read(TouchPoint& point) {
@@ -33,7 +39,7 @@ bool TouchDriver::read(TouchPoint& point) {
   touch_data_t data;
   bsp_touch_read();
   if (!bsp_touch_get_coordinates(&data) || data.touch_num == 0) {
-    return false;
+    return true;
   }
 
   point.x = data.coords[0].x;

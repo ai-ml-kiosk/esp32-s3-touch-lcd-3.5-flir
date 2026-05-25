@@ -38,7 +38,8 @@ Expected checks:
 
 - Thermal image appears with correct orientation.
 - Landscape is the default orientation after a fresh settings reset.
-- The status-bar orientation label switches between landscape and portrait.
+- The onboard QMI8658 is detected on board I2C and the status-bar orientation
+  label switches after a sustained 500 ms physical rotation.
 - The active landscape output is 480x320 and logs the actual display pixel
   format selected by the AXS15231B QSPI driver.
 - Hot/cold markers follow a warm object.

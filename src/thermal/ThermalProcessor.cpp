@@ -18,14 +18,14 @@ uint16_t sourceXFromTransformed(const ThermalFrame& frame, uint16_t logicalX, ui
   if (landscape) {
     return frame.width - 1 - logicalX;
   }
-  return logicalY;
+  return frame.width - 1 - logicalY;
 }
 
 uint16_t sourceYFromTransformed(const ThermalFrame& frame, uint16_t logicalX, uint16_t logicalY, bool landscape) {
   if (landscape) {
     return frame.height - 1 - logicalY;
   }
-  return frame.height - 1 - logicalX;
+  return logicalX;
 }
 
 }  // namespace

@@ -17,17 +17,24 @@ full capture/render/storage app described here is the next implementation stage.
 
 The first complete app screen should prioritize a live thermal viewport with
 only the controls and readouts needed during use: frame status, hot/cold markers,
-center temperature, palette/range state, manual FFC, status-bar orientation
-switching, zoom, capture to TF card, and `SETUP` configuration.
+center temperature, palette/range state, manual FFC, QMI8658-driven
+auto-rotation, zoom, capture to TF card, and `SETUP` configuration.
 
-Landscape is the default orientation for this hardware. The status bar should
-place the active orientation label at the left edge of the screen, followed by a
-zoom toggle. The orientation label shows `LANDSCAPE` in landscape mode and
-`PORTRAIT` in portrait mode. Tapping that label toggles layouts. The zoom toggle
-shows `ZOOM+` in normal view and `ZOOM-` while zoomed; zoom mode renders a
-center crop of the Lepton frame and remaps hot/cold marker positions to the
-visible crop. The selected orientation should be saved with other viewer
+Landscape is the default orientation for this hardware. The Type B board has an
+onboard QMI8658 6-axis IMU on the internal I2C bus. The firmware reads the raw
+accelerometer gravity vector and auto-rotates between landscape and portrait
+after a sustained 500 ms physical orientation change. The status bar should
+place the active orientation icon at the left edge of the screen, followed by a
+zoom toggle. The orientation icon uses a wide display glyph in landscape and a
+tall display glyph in portrait, but it is not a touch button. The zoom toggle
+uses a magnifier icon with plus/minus state; zoom mode renders a center crop of
+the Lepton frame and remaps hot/cold marker positions to the visible crop. The
+selected orientation should be saved with other viewer
 settings so the device boots back into the user's last chosen layout.
+Portrait mode keeps the palette scale and its high/low temperature labels in a
+narrow strip beside the thermal viewport, matching the landscape diagram. It
+does not use the older wide right-side readout column, so most of the portrait
+screen remains available for the FLIR image.
 
 The final render target is the built-in 480x320 landscape display using the
 panel's driver-native pixel path. Keep palette calculations internally high
@@ -48,6 +55,12 @@ contrast when the scene has a narrow temperature range.
 The `SETUP` button opens an on-device ESP32 setup screen or overlay. See
 [ESP32 Setup Button Design](esp32-setup-button-design.md) for the embedded C++
 settings, validation, persistence, and capture-path contract.
+The main runtime controls should use compact functional icons instead of text:
+palette swatches for `PAL`, shutter bars for `FFC`, a camera outline for `CAP`,
+a playback/review icon for the latest capture, and a gear-like settings mark
+for `SETUP`. The capture-review control opens a small modal-style review panel
+showing the latest saved capture path with `Delete` and `Close` actions. Delete
+removes the saved BMP and matching optional raw file pair.
 
 ![ESP32 setup screen flow](assets/esp32-setup-screen-flow.svg)
 
@@ -64,6 +77,20 @@ The setup screen also includes a `Cal` temperature offset field. It cycles in
 `0.5C` steps from `-5.0C` through `+5.0C`, persists in NVS, and is applied only
 to displayed temperature labels. Raw thermal data and saved `.raw` frames remain
 uncorrected.
+The setup screen includes an `Auto` rotation toggle. When enabled, QMI8658
+gravity-vector auto-rotation selects landscape or portrait. When disabled, the
+`Orientation` setting manually selects `Landscape` or `Portrait` and the display
+and touch mapping are reindexed when setup is saved.
+The setup screen includes a `Show Filename` toggle for captured BMP images.
+Saved BMPs always include a footer with `HIGH`, `LOW`, and `CTR` temperatures.
+When `Show Filename` is enabled, the footer also includes the saved BMP
+filename.
+The setup screen includes a `Raw` switch. Green/right means raw saving is
+enabled; gray/left means the capture button saves only the annotated BMP. The
+annotated BMP is always saved.
+The setup screen should remain scrollable as fields are added. The current
+firmware renders scroll affordances in portrait setup so future options can
+extend below the visible panel without covering Save/Cancel.
 Runtime feedback is shown on the last line of the screen. This bottom status
 line reports button actions, capture results, idle timeout sleep, and Lepton
 wake progress without covering the thermal viewport or the main controls.
@@ -407,27 +434,40 @@ bool saveCapture(const uint16_t* raw14,
                  uint16_t bitmapHeight);
 ```
 
-Saves two files under the active setup save path on the TF card. The default
+Saves files under the active setup save path on the TF card. The default
 path is `/flir`:
 
 - `frame_00001.raw`: raw radiometric 14-bit values stored as little-endian `uint16_t`.
-- `frame_00001.bmp`: 8-bit grayscale BMP generated from the processed display buffer.
+- `frame_00001.bmp`: processed display buffer plus a black footer with `HIGH`,
+  `LOW`, and `CTR` temperatures. The setup `Show Filename` option controls
+  whether the footer also includes `FILE frame_00001.bmp`.
 
-Returns `true` only if both files are written successfully.
+Current filename policy:
+
+- Use `thermal_YYYYmmddHHMMSS` when ESP32 system time is valid.
+- Fall back to `thermal_00001` style names until RTC/network time is available.
+- Add `_02`, `_03`, and so on if multiple captures would otherwise use the same
+  base name.
+
+Returns `true` when the BMP is written and the optional raw file is either
+written successfully or disabled by setup.
 
 ## Capture Button Behavior
 
 The app receives debounced touch events from the built-in AXS15231B I2C
-`touch_driver`. The UI layer maps screen coordinates to buttons such as `CAP`.
-Storage writes and display updates must remain outside interrupt context.
+`touch_driver`. The UI layer maps screen coordinates to icon buttons such as
+palette, FFC, capture, capture review/delete, setup, and zoom. Storage writes
+and display updates must remain outside interrupt context.
 
 When tapped:
 
-1. The current frame is paused.
-2. The raw 14-bit frame and 8-bit BMP are written to the configured TF-card
-   path.
-3. The frozen frame remains on screen.
-4. A second tap resumes live rendering.
+1. The current rendered frame is written as an annotated BMP to the configured
+   TF-card path.
+2. The raw 14-bit frame is written beside it only when the setup `Raw` option is
+   enabled.
+3. The bottom status line shows the saved base filename.
+4. The review/delete icon opens the latest saved capture record and can delete
+   the BMP and optional raw pair.
 
 ## Troubleshooting Guide
 
