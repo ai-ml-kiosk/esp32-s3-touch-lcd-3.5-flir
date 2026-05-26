@@ -5,6 +5,7 @@
 #include <Wire.h>
 #include <cstring>
 #include <esp_heap_caps.h>
+#include <esp_system.h>
 #include <sys/time.h>
 #include <time.h>
 #include <strings.h>
@@ -65,6 +66,9 @@ uint16_t viewportHeight = 0;
 uint32_t lastFrameMs = 0;
 uint32_t lastStatusMs = 0;
 uint32_t lastUserActivityMs = 0;
+uint32_t lastGoodFrameMs = 0;
+uint32_t lastLeptonEscalationMs = 0;
+uint32_t lastObservedRecoveryCount = 0;
 uint32_t lastImuPollMs = 0;
 uint32_t lastTouchActionMs = 0;
 uint32_t orientationCandidateSinceMs = 0;
@@ -81,6 +85,35 @@ bool lastImuLandscape = true;
 uint32_t leptonLowPowerSinceMs = 0;
 char serialCommandBuffer[kSerialCommandCapacity] = {};
 size_t serialCommandLength = 0;
+
+void renderFrame();
+
+const char* resetReasonName(esp_reset_reason_t reason) {
+  switch (reason) {
+    case ESP_RST_POWERON:
+      return "power-on";
+    case ESP_RST_EXT:
+      return "external";
+    case ESP_RST_SW:
+      return "software";
+    case ESP_RST_PANIC:
+      return "panic";
+    case ESP_RST_INT_WDT:
+      return "interrupt-watchdog";
+    case ESP_RST_TASK_WDT:
+      return "task-watchdog";
+    case ESP_RST_WDT:
+      return "watchdog";
+    case ESP_RST_DEEPSLEEP:
+      return "deep-sleep";
+    case ESP_RST_BROWNOUT:
+      return "brownout";
+    case ESP_RST_SDIO:
+      return "sdio";
+    default:
+      return "unknown";
+  }
+}
 
 void printPinMap() {
   Serial.println();
@@ -436,6 +469,36 @@ bool wakeLeptonFromLowPower() {
 #endif
 }
 
+void escalateLeptonVospiRecovery(const char* reason) {
+#if defined(FLIR_USE_SYNTHETIC_FRAMES)
+  (void)reason;
+#else
+  const uint32_t now = millis();
+  if (now - lastLeptonEscalationMs < 10000) {
+    return;
+  }
+  lastLeptonEscalationMs = now;
+
+  Serial.printf("VoSPI escalation: %s; rebooting Lepton over CCI and restarting SPI\n", reason);
+  ui.showStatus("Recovering Lepton...");
+  frame.frameNumber = 0;
+  needsRender = true;
+  renderFrame();
+
+  holdLeptonDeselected();
+  if (!rebootLeptonViaCci(2500)) {
+    Serial.println("VoSPI escalation warning: CCI reboot did not stabilize");
+  }
+  waitForLeptonColdBoot();
+  lepton.begin();
+  lastFrameMs = 0;
+  lastGoodFrameMs = millis();
+  lastObservedRecoveryCount = lepton.recoveryCount();
+  ui.showStatus("Lepton recovery done");
+  needsRender = true;
+#endif
+}
+
 void printRuntimeStatus() {
   Serial.printf("frame=%lu orientation=%s palette=%d temp_offset=%.1fC storage=%s heap=%u psram=%u low_power=%s",
                 static_cast<unsigned long>(frame.frameNumber),
@@ -532,10 +595,9 @@ void processSerialInput() {
 }
 
 uint32_t inactivitySleepMs() {
-  if (settings.inactivitySleepSeconds == 0) {
-    return 0;
-  }
-  return static_cast<uint32_t>(settings.inactivitySleepSeconds) * 1000UL;
+  // Automatic Lepton sleep is disabled until CCI wake/recovery is reliable on
+  // this hardware. Manual serial sleep/wake commands remain available.
+  return 0;
 }
 
 bool allocateViewportBuffer() {
@@ -699,6 +761,8 @@ void setup() {
   Serial.begin(kSerialBaud);
   delay(1500);
 
+  const esp_reset_reason_t resetReason = esp_reset_reason();
+  Serial.printf("ESP32 reset reason: %s (%d)\n", resetReasonName(resetReason), static_cast<int>(resetReason));
   printPinMap();
   seedSystemTimeFromBuild();
   holdLeptonDeselected();
@@ -725,6 +789,7 @@ void setup() {
 
   scanI2cBus();
   lastUserActivityMs = millis();
+  lastGoodFrameMs = millis();
 
 #if defined(FLIR_USE_SYNTHETIC_FRAMES)
   Serial.println("FLIR viewer firmware ready. Synthetic frames enabled by build flag.");
@@ -804,8 +869,17 @@ void loop() {
   if (!leptonLowPower && now - lastFrameMs >= kFrameIntervalMs) {
     lastFrameMs = now;
     if (lepton.readFrame(frame)) {
+      lastGoodFrameMs = now;
+      lastObservedRecoveryCount = lepton.recoveryCount();
       renderFrame();
       needsRender = false;
+#if !defined(FLIR_USE_SYNTHETIC_FRAMES)
+    } else if (lepton.recoveryCount() != lastObservedRecoveryCount) {
+      lastObservedRecoveryCount = lepton.recoveryCount();
+      if (now - lastGoodFrameMs >= 3000) {
+        escalateLeptonVospiRecovery("no frames after repeated SPI recovery");
+      }
+#endif
     }
   }
 

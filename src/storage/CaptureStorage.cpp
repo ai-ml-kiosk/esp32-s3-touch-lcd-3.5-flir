@@ -10,7 +10,8 @@
 
 namespace {
 
-constexpr uint16_t kCaptureFooterHeight = 44;
+constexpr uint16_t kCaptureFooterHeight = 20;
+constexpr uint16_t kCaptureFooterHeightWithFilename = 28;
 
 bool hasTraversal(const char* path) {
   return strstr(path, "..") != nullptr;
@@ -437,6 +438,7 @@ uint16_t CaptureStorage::captureCount(const char* dir) const {
     }
     file.close();
     file = root.openNextFile();
+    yield();
   }
   root.close();
   return count;
@@ -480,9 +482,58 @@ bool CaptureStorage::captureBaseAt(const char* dir, uint16_t index, char* out, s
     }
     file.close();
     file = root.openNextFile();
+    yield();
   }
   root.close();
   return false;
+}
+
+bool CaptureStorage::latestCaptureBase(const char* dir, char* out, size_t outSize) const {
+  if (!mounted_ || dir == nullptr || dir[0] == '\0' || out == nullptr || outSize == 0) {
+    return false;
+  }
+  out[0] = '\0';
+
+  File root = SD_MMC.open(dir);
+  if (!root || !root.isDirectory()) {
+    return false;
+  }
+
+  bool found = false;
+  char latestPath[112] = {};
+  File file = root.openNextFile();
+  while (file) {
+    const char* name = file.name();
+    const size_t len = strlen(name);
+    if (!file.isDirectory() && len > 4 && strcmp(name + len - 4, ".bmp") == 0) {
+      char filePath[112] = {};
+      if (name[0] == '/') {
+        snprintf(filePath, sizeof(filePath), "%s", name);
+      } else {
+        snprintf(filePath, sizeof(filePath), "%s/%s", dir, name);
+      }
+      const size_t pathLen = strlen(filePath);
+      if (pathLen > 4) {
+        filePath[pathLen - 4] = '\0';
+      }
+      if (!found || strcmp(filePath, latestPath) > 0) {
+        strncpy(latestPath, filePath, sizeof(latestPath) - 1);
+        latestPath[sizeof(latestPath) - 1] = '\0';
+        found = true;
+      }
+    }
+    file.close();
+    file = root.openNextFile();
+    yield();
+  }
+  root.close();
+
+  if (!found) {
+    return false;
+  }
+  strncpy(out, latestPath, outSize - 1);
+  out[outSize - 1] = '\0';
+  return true;
 }
 
 bool CaptureStorage::deleteCapture(const char* basePath) {
@@ -569,6 +620,9 @@ bool CaptureStorage::loadCaptureBmp(const char* basePath,
       const uint32_t offset = static_cast<uint32_t>(x) * 3;
       out[static_cast<uint32_t>(imageY) * outWidth + x] = rgb565From888(row[offset + 2], row[offset + 1], row[offset]);
     }
+    if ((rowIndex & 0x0F) == 0) {
+      yield();
+    }
   }
 
   file.close();
@@ -625,7 +679,7 @@ bool CaptureStorage::loadCaptureBmpScaled(const char* basePath,
     return false;
   }
 
-  const uint32_t sourceImageHeight = bmpHeight > kCaptureFooterHeight ? bmpHeight - kCaptureFooterHeight : bmpHeight;
+  const uint32_t sourceImageHeight = bmpHeight;
   uint8_t row[1536] = {};
   int32_t targetY = static_cast<int32_t>(outHeight) - 1;
   for (uint32_t fileRow = 0; fileRow < bmpHeight && targetY >= 0; ++fileRow) {
@@ -634,9 +688,6 @@ bool CaptureStorage::loadCaptureBmpScaled(const char* basePath,
       return false;
     }
     const uint32_t sourceY = bmpHeight - 1 - fileRow;
-    if (sourceY >= sourceImageHeight) {
-      continue;
-    }
     while (targetY >= 0 &&
            static_cast<uint32_t>(targetY) * sourceImageHeight / outHeight == sourceY) {
       for (uint16_t x = 0; x < outWidth; ++x) {
@@ -646,6 +697,9 @@ bool CaptureStorage::loadCaptureBmpScaled(const char* basePath,
             rgb565From888(row[offset + 2], row[offset + 1], row[offset]);
       }
       --targetY;
+    }
+    if ((fileRow & 0x0F) == 0) {
+      yield();
     }
   }
 
@@ -659,6 +713,7 @@ bool CaptureStorage::writeRaw(const char* path, const uint16_t* raw14, size_t pi
     return false;
   }
   const size_t written = file.write(reinterpret_cast<const uint8_t*>(raw14), pixelCount * sizeof(uint16_t));
+  yield();
   file.close();
   return written == pixelCount * sizeof(uint16_t);
 }
@@ -675,7 +730,9 @@ bool CaptureStorage::writeBmp24(const char* path,
     return false;
   }
 
-  const uint16_t outputHeight = height + kCaptureFooterHeight;
+  const uint16_t footerHeight = settings.includeFilenameInCapture ? kCaptureFooterHeightWithFilename
+                                                                  : kCaptureFooterHeight;
+  const uint16_t outputHeight = height + footerHeight;
   const uint32_t rowSize = ((static_cast<uint32_t>(width) * 3 + 3) / 4) * 4;
   const uint32_t pixelDataSize = rowSize * outputHeight;
   const uint32_t fileSize = 54 + pixelDataSize;
@@ -706,7 +763,9 @@ bool CaptureStorage::writeBmp24(const char* path,
   char tempLine[80] = {};
   snprintf(tempLine,
            sizeof(tempLine),
-           "CTR %.1fC",
+           "HIGH %.1fC  LOW %.1fC  CTR %.1fC",
+           stats.maxC,
+           stats.minC,
            stats.centerC);
   char hotLine[24] = {};
   char coldLine[24] = {};
@@ -758,9 +817,18 @@ bool CaptureStorage::writeBmp24(const char* path,
       drawTextToRowScaled(row, rowSize, width, y, coldLabelX + 1, coldLabelY + 1, coldLine, 2, 96, 220, 255);
     } else {
       const uint16_t footerY = static_cast<uint16_t>(y - height);
-      drawTextToRow(row, rowSize, width, footerY, 6, 8, tempLine, 255, 255, 255);
+      drawTextToRow(row,
+                    rowSize,
+                    width,
+                    footerY,
+                    6,
+                    settings.includeFilenameInCapture ? 4 : 7,
+                    tempLine,
+                    255,
+                    255,
+                    255);
       if (settings.includeFilenameInCapture) {
-        drawTextToRow(row, rowSize, width, footerY, 6, 26, fileLine, 180, 200, 220);
+        drawTextToRow(row, rowSize, width, footerY, 6, 16, fileLine, 180, 200, 220);
       }
       offset = static_cast<uint32_t>(width) * 3;
     }
@@ -770,6 +838,9 @@ bool CaptureStorage::writeBmp24(const char* path,
     if (file.write(row, rowSize) != rowSize) {
       file.close();
       return false;
+    }
+    if ((y & 0x0F) == 0) {
+      yield();
     }
   }
 

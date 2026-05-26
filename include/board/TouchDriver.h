@@ -16,5 +16,7 @@ class TouchDriver {
 
  private:
   bool ready_ = false;
+  uint16_t width_ = 0;
+  uint16_t height_ = 0;
   uint32_t lastReadMs_ = 0;
 };

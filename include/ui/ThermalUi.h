@@ -79,6 +79,7 @@ class ThermalUi {
   void toggleRawCapture(AppSettings& settings);
   void storeCapturePreview(const uint16_t* viewportPixels, uint16_t viewportWidth, uint16_t viewportHeight);
   bool ensureCapturePreviewBuffer(uint16_t viewportWidth, uint16_t viewportHeight);
+  void releaseCaptureThumbnail();
   bool loadBrowserPreview(CaptureStorage& storage, uint16_t viewportWidth, uint16_t viewportHeight);
   void renderSetup(DisplayDriver& display, const AppSettings& settings);
   void refreshCaptureBrowser(CaptureStorage& storage, const AppSettings& settings);

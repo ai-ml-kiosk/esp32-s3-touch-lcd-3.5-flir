@@ -275,6 +275,10 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       return true;
     case Action::Playback:
       refreshCaptureBrowser(storage, settings);
+      if (captureBrowserCount_ > 0 &&
+          storage.latestCaptureBase(settings.savePath, captureBrowserBasePath_, sizeof(captureBrowserBasePath_))) {
+        captureBrowserIndex_ = captureBrowserCount_ - 1;
+      }
       loadBrowserPreview(storage, viewportWidth, viewportHeight);
       playbackActive_ = true;
       ignoreSetupTouchUntilMs_ = now + 600;
@@ -298,20 +302,37 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       return true;
     case Action::PlaybackClose:
       playbackActive_ = false;
+      hasCapturePreview_ = false;
+      releaseCaptureThumbnail();
+      display.fillScreen(kBg);
       ignoreTouchUntilMs_ = now + 300;
       showStatus("Review closed");
       return true;
     case Action::PlaybackDelete:
       if (storage.deleteCapture(captureBrowserBasePath_)) {
         hasCapturePreview_ = false;
-        hasCaptureThumbnail_ = false;
-        refreshCaptureBrowser(storage, settings);
-        loadBrowserPreview(storage, viewportWidth, viewportHeight);
+        releaseCaptureThumbnail();
+        if (captureBrowserCount_ > 0) {
+          --captureBrowserCount_;
+        }
+        if (captureBrowserCount_ == 0) {
+          captureBrowserIndex_ = 0;
+          captureBrowserBasePath_[0] = '\0';
+        } else {
+          if (captureBrowserIndex_ >= captureBrowserCount_) {
+            captureBrowserIndex_ = captureBrowserCount_ - 1;
+          }
+          storage.captureBaseAt(settings.savePath,
+                                captureBrowserIndex_,
+                                captureBrowserBasePath_,
+                                sizeof(captureBrowserBasePath_));
+          loadBrowserPreview(storage, viewportWidth, viewportHeight);
+        }
         showStatus("Capture deleted");
       } else {
         showStatus("Delete failed");
       }
-      ignoreTouchUntilMs_ = now + 350;
+      ignoreTouchUntilMs_ = now + 180;
       return true;
     case Action::SetupScrollUp:
       setupScrollY_ -= 44;
@@ -643,6 +664,16 @@ bool ThermalUi::loadBrowserPreview(CaptureStorage& storage, uint16_t viewportWid
                                                       captureThumbnailHeight_);
   hasCapturePreview_ = false;
   return hasCaptureThumbnail_;
+}
+
+void ThermalUi::releaseCaptureThumbnail() {
+  hasCaptureThumbnail_ = false;
+  if (captureThumbnailPixels_ != nullptr) {
+    heap_caps_free(captureThumbnailPixels_);
+    captureThumbnailPixels_ = nullptr;
+  }
+  captureThumbnailWidth_ = 0;
+  captureThumbnailHeight_ = 0;
 }
 
 void ThermalUi::refreshCaptureBrowser(CaptureStorage& storage, const AppSettings& settings) {

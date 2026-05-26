@@ -24,6 +24,7 @@ class CaptureStorage {
   bool deleteLastCapture();
   uint16_t captureCount(const char* dir) const;
   bool captureBaseAt(const char* dir, uint16_t index, char* out, size_t outSize) const;
+  bool latestCaptureBase(const char* dir, char* out, size_t outSize) const;
   bool deleteCapture(const char* basePath);
   bool loadCaptureBmp(const char* basePath, uint16_t* out, uint16_t outWidth, uint16_t outHeight) const;
   bool loadCaptureBmpScaled(const char* basePath, uint16_t* out, uint16_t outWidth, uint16_t outHeight) const;
