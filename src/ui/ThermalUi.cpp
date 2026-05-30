@@ -39,7 +39,7 @@ uint16_t orientationWidth(bool landscape) {
 }
 
 uint16_t zoomWidth(bool landscape) {
-  return landscape ? 70 : 56;
+  return landscape ? 28 : 24;
 }
 
 void formatTemp(char* out, size_t outSize, float temp) {
@@ -94,11 +94,15 @@ void ThermalUi::render(DisplayDriver& display,
 
   const uint16_t zoomW = zoomWidth(settings.landscape);
   const int16_t zoomX = orientX + orientW + 8;
-  display.fillRoundRect(zoomX, 8, zoomW, 26, 6, zoomed_ ? kPrimary : kButton);
-  display.drawRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(100, 116, 139));
   drawZoomIcon(display, zoomX + static_cast<int16_t>(zoomW / 2), 21, zoomed_, kText);
 
-  const int16_t liveX = zoomX + zoomW + 16;
+  const int16_t hotColdX = zoomX + zoomW + 12;
+  drawHotColdIcon(display, hotColdX + 12, 21, settings.showHotColdDetails);
+
+  const int16_t centerX = hotColdX + 34;
+  drawCenterTempIcon(display, centerX + 12, 21, settings.showCenterTemperature);
+
+  const int16_t liveX = centerX + 40;
   display.drawText(liveX, 14, "LIVE", kText, 1);
   display.fillRoundRect(liveX + 36, 16, 10, 10, 5, DisplayDriver::rgb565(34, 197, 94));
   display.drawText(liveX + 58, 14, "8.6 fps", kMuted, 1);
@@ -136,22 +140,37 @@ void ThermalUi::render(DisplayDriver& display,
   const uint16_t hotY = viewY + static_cast<uint32_t>(stats.hotY) * viewportHeight / markerH;
   const uint16_t coldX = viewX + static_cast<uint32_t>(stats.coldX) * viewportWidth / markerW;
   const uint16_t coldY = viewY + static_cast<uint32_t>(stats.coldY) * viewportHeight / markerH;
-  display.drawRect(hotX > 5 ? hotX - 5 : hotX, hotY > 5 ? hotY - 5 : hotY, 11, 11, kHot);
-  display.drawRect(coldX > 5 ? coldX - 5 : coldX, coldY > 5 ? coldY - 5 : coldY, 11, 11, kCold);
 
   char tempText[16];
-  formatTemp(tempText, sizeof(tempText), stats.maxC);
-  int16_t labelX = hotX + 9;
-  if (labelX > static_cast<int16_t>(info.width - 74)) {
-    labelX = hotX > 74 ? hotX - 74 : 0;
+  if (settings.showHotColdDetails) {
+    display.drawRect(hotX > 5 ? hotX - 5 : hotX, hotY > 5 ? hotY - 5 : hotY, 11, 11, kHot);
+    display.drawRect(coldX > 5 ? coldX - 5 : coldX, coldY > 5 ? coldY - 5 : coldY, 11, 11, kCold);
+    formatTemp(tempText, sizeof(tempText), stats.maxC);
+    int16_t labelX = hotX + 9;
+    if (labelX > static_cast<int16_t>(info.width - 74)) {
+      labelX = hotX > 74 ? hotX - 74 : 0;
+    }
+    drawTempLabel(display, labelX, hotY > 18 ? hotY - 18 : hotY + 10, tempText, kHot);
+    formatTemp(tempText, sizeof(tempText), stats.minC);
+    labelX = coldX + 9;
+    if (labelX > static_cast<int16_t>(info.width - 74)) {
+      labelX = coldX > 74 ? coldX - 74 : 0;
+    }
+    drawTempLabel(display, labelX, coldY > 18 ? coldY - 18 : coldY + 10, tempText, kCold);
   }
-  drawTempLabel(display, labelX, hotY > 18 ? hotY - 18 : hotY + 10, tempText, kHot);
-  formatTemp(tempText, sizeof(tempText), stats.minC);
-  labelX = coldX + 9;
-  if (labelX > static_cast<int16_t>(info.width - 74)) {
-    labelX = coldX > 74 ? coldX - 74 : 0;
+
+  if (settings.showCenterTemperature) {
+    const uint16_t centerMarkerX = viewX + viewportWidth / 2;
+    const uint16_t centerMarkerY = viewY + viewportHeight / 2;
+    display.fillRect(centerMarkerX > 10 ? centerMarkerX - 10 : centerMarkerX, centerMarkerY, 21, 2, kText);
+    display.fillRect(centerMarkerX, centerMarkerY > 10 ? centerMarkerY - 10 : centerMarkerY, 2, 21, kText);
+    formatTemp(tempText, sizeof(tempText), stats.centerC);
+    int16_t labelX = centerMarkerX + 11;
+    if (labelX > static_cast<int16_t>(info.width - 74)) {
+      labelX = centerMarkerX > 74 ? centerMarkerX - 74 : 0;
+    }
+    drawTempLabel(display, labelX, centerMarkerY > 20 ? centerMarkerY - 20 : centerMarkerY + 12, tempText, kText);
   }
-  drawTempLabel(display, labelX, coldY > 18 ? coldY - 18 : coldY + 10, tempText, kCold);
 
   if (settings.landscape) {
     int16_t scaleX = static_cast<int16_t>(viewX + viewportWidth + 4);
@@ -361,6 +380,16 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       ignoreTouchUntilMs_ = now + 650;
       showStatus(zoomed_ ? "Zoom in" : "Zoom out");
       return true;
+    case Action::HotColdDetails:
+      settings.showHotColdDetails = !settings.showHotColdDetails;
+      ignoreTouchUntilMs_ = now + 350;
+      showStatus(settings.showHotColdDetails ? "High/low on" : "High/low off");
+      return true;
+    case Action::CenterTemperature:
+      settings.showCenterTemperature = !settings.showCenterTemperature;
+      ignoreTouchUntilMs_ = now + 350;
+      showStatus(settings.showCenterTemperature ? "Center temp on" : "Center temp off");
+      return true;
     case Action::SetupCancel:
       setupActive_ = false;
       ignoreTouchUntilMs_ = now + 350;
@@ -491,6 +520,14 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
   const int16_t zoomX = orientX + orientW + 8;
   if (contains({static_cast<int16_t>(zoomX - 6), 4, static_cast<uint16_t>(zoomW + 12), 36}, x, y)) {
     return Action::Zoom;
+  }
+  const int16_t hotColdX = zoomX + zoomW + 12;
+  if (contains({static_cast<int16_t>(hotColdX - 4), 4, 32, 36}, x, y)) {
+    return Action::HotColdDetails;
+  }
+  const int16_t centerX = hotColdX + 34;
+  if (contains({static_cast<int16_t>(centerX - 4), 4, 32, 36}, x, y)) {
+    return Action::CenterTemperature;
   }
 
   const uint16_t buttonY = screenH - (landscape ? 52 : 54);
@@ -824,11 +861,14 @@ void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& setting
 
   const uint16_t zoomW = zoomWidth(settings.landscape);
   const int16_t zoomX = orientX + orientW + 8;
-  display.fillRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(37, 99, 235));
-  display.drawRoundRect(zoomX, 8, zoomW, 26, 6, DisplayDriver::rgb565(15, 23, 42));
   drawZoomIcon(display, zoomX + static_cast<int16_t>(zoomW / 2), 21, zoomed_, DisplayDriver::rgb565(15, 23, 42));
 
-  const int16_t waitX = zoomX + zoomW + 16;
+  const int16_t hotColdX = zoomX + zoomW + 12;
+  drawHotColdIcon(display, hotColdX + 12, 21, settings.showHotColdDetails);
+  const int16_t centerX = hotColdX + 34;
+  drawCenterTempIcon(display, centerX + 12, 21, settings.showCenterTemperature);
+
+  const int16_t waitX = centerX + 40;
   display.drawText(waitX, 14, "WAIT", DisplayDriver::rgb565(15, 23, 42), 1);
   display.drawTextRight(info.width - 10, 14, storageReady ? "TF OK" : "NO TF", DisplayDriver::rgb565(15, 23, 42), 1);
 
@@ -965,11 +1005,38 @@ void ThermalUi::drawActionIcon(DisplayDriver& display, int16_t cx, int16_t cy, A
 }
 
 void ThermalUi::drawZoomIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool zoomed, uint16_t color) {
-  display.drawRect(cx - 10, cy - 10, 14, 14, color);
-  display.fillRect(cx + 3, cy + 3, 8, 3, color);
-  display.fillRect(cx - 6, cy - 4, 6, 2, color);
+  display.drawRect(cx - 9, cy - 8, 14, 14, color);
+  display.drawRect(cx - 8, cy - 7, 12, 12, color);
+  display.fillRect(cx + 3, cy + 5, 8, 3, color);
+  display.fillRect(cx - 6, cy - 2, 8, 2, color);
   if (!zoomed) {
-    display.fillRect(cx - 4, cy - 6, 2, 6, color);
+    display.fillRect(cx - 3, cy - 5, 2, 8, color);
+  }
+}
+
+void ThermalUi::drawHotColdIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled) {
+  const uint16_t color = enabled ? kText : DisplayDriver::rgb565(100, 116, 139);
+  display.drawRect(cx - 11, cy - 8, 8, 16, color);
+  display.fillRect(cx - 9, cy + 1, 4, 5, kHot);
+  display.drawRect(cx + 3, cy - 8, 8, 16, color);
+  display.fillRect(cx + 5, cy + 1, 4, 5, kCold);
+  display.fillRect(cx - 7, cy - 11, 2, 4, kHot);
+  display.fillRect(cx + 5, cy - 11, 2, 4, kCold);
+  if (!enabled) {
+    display.fillRect(cx - 12, cy + 8, 24, 2, color);
+  }
+}
+
+void ThermalUi::drawCenterTempIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled) {
+  const uint16_t color = enabled ? kText : DisplayDriver::rgb565(100, 116, 139);
+  display.drawRect(cx - 8, cy - 8, 16, 16, color);
+  display.fillRect(cx - 12, cy, 7, 2, color);
+  display.fillRect(cx + 6, cy, 7, 2, color);
+  display.fillRect(cx, cy - 12, 2, 7, color);
+  display.fillRect(cx, cy + 6, 2, 7, color);
+  display.fillRect(cx - 1, cy - 1, 3, 3, color);
+  if (!enabled) {
+    display.fillRect(cx - 10, cy + 8, 20, 2, color);
   }
 }
 

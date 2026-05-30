@@ -44,6 +44,8 @@ class ThermalUi {
     Playback,
     Setup,
     Zoom,
+    HotColdDetails,
+    CenterTemperature,
     PlaybackClose,
     PlaybackDelete,
     PlaybackPrev,
@@ -90,6 +92,8 @@ class ThermalUi {
   void drawIconButton(DisplayDriver& display, const Rect& rect, Action action, bool primary = false);
   void drawActionIcon(DisplayDriver& display, int16_t cx, int16_t cy, Action action, uint16_t color);
   void drawZoomIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool zoomed, uint16_t color);
+  void drawHotColdIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled);
+  void drawCenterTempIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled);
   void drawOrientationIcon(DisplayDriver& display, int16_t x, int16_t y, bool landscape);
   void drawTempLabel(DisplayDriver& display, int16_t x, int16_t y, const char* text, uint16_t color);
   void drawPaletteScale(DisplayDriver& display,

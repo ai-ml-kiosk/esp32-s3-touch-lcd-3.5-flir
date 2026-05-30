@@ -671,7 +671,9 @@ bool settingsEqual(const AppSettings& left, const AppSettings& right) {
          left.inactivitySleepSeconds == right.inactivitySleepSeconds &&
          left.temperatureOffsetTenths == right.temperatureOffsetTenths &&
          left.includeFilenameInCapture == right.includeFilenameInCapture &&
-         left.saveRawCapture == right.saveRawCapture;
+         left.saveRawCapture == right.saveRawCapture &&
+         left.showHotColdDetails == right.showHotColdDetails &&
+         left.showCenterTemperature == right.showCenterTemperature;
 }
 
 void updateAutoOrientation() {

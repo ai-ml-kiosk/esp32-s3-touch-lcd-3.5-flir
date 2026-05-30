@@ -38,6 +38,10 @@ date/time format, and orientation.
 
 See [ESP32 Setup Button Design](docs/esp32-setup-button-design.md).
 
+For hardware bring-up notes, known symptoms, and debugging actions already
+performed on this board, see
+[Troubleshooting Actions Log](docs/troubleshooting-actions.md).
+
 ## FLIR Wiring
 
 | FLIR breakout signal | ESP32-S3 GPIO |

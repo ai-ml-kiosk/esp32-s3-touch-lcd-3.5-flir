@@ -13,4 +13,6 @@ struct AppSettings {
   int8_t temperatureOffsetTenths = 0;
   bool includeFilenameInCapture = true;
   bool saveRawCapture = true;
+  bool showHotColdDetails = true;
+  bool showCenterTemperature = true;
 };

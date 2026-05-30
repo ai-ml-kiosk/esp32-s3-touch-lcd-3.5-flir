@@ -42,6 +42,10 @@ AppSettings SettingsStore::load() {
       preferences.getBool("capName", settings.includeFilenameInCapture);
   settings.saveRawCapture =
       preferences.getBool("saveRaw", settings.saveRawCapture);
+  settings.showHotColdDetails =
+      preferences.getBool("showHiLo", settings.showHotColdDetails);
+  settings.showCenterTemperature =
+      preferences.getBool("showCtr", settings.showCenterTemperature);
   preferences.end();
 
   if (settings.savePath[0] != '/') {
@@ -72,6 +76,8 @@ bool SettingsStore::save(const AppSettings& settings) {
   preferences.putShort("tempOff10", settings.temperatureOffsetTenths);
   preferences.putBool("capName", settings.includeFilenameInCapture);
   preferences.putBool("saveRaw", settings.saveRawCapture);
+  preferences.putBool("showHiLo", settings.showHotColdDetails);
+  preferences.putBool("showCtr", settings.showCenterTemperature);
   preferences.end();
   return true;
 }

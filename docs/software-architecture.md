@@ -43,7 +43,7 @@ From `ui/thermal_ui.py`:
 | `touch_driver` | Built-in AXS15231B I2C touch sampling, calibration, debouncing. |
 | `capture_storage` | Optional BMP/raw frame capture and logs on the onboard TF card. |
 | `setup_ui` | On-device settings screen for save path, locale/region, date/time format, orientation, touch inactivity sleep, and temperature offset calibration. |
-| `thermal_ui` | Main screen layout, buttons, orientation/zoom, high/low markers. |
+| `thermal_ui` | Main screen layout, buttons, orientation/zoom, status-bar annotation toggles, high/low markers, center marker. |
 | `settings` | Non-volatile settings in NVS, with optional TF-card config later. |
 
 `src/main.cpp` should remain a thin entry point. The top-level lifecycle belongs

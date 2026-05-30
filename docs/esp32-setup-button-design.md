@@ -145,14 +145,18 @@ falls back to monotonic names such as `thermal_00001`. If two captures happen
 within the same second, the second and later captures receive a suffix such as
 `_02`.
 
-Saved BMP images include a black footer below the thermal image. The first
-footer line always records captured temperature details:
+Saved BMP images may include a black footer below the thermal image. Temperature
+footer content is controlled by runtime status-bar annotation toggles at capture
+time, not by setup fields:
 
 ```text
 HIGH <temp>C  LOW <temp>C  CTR <temp>C
 ```
 
-The second footer line is controlled by the setup `Show Filename` toggle:
+If high/low annotation is off, `HIGH` and `LOW` are omitted. If center annotation
+is off, `CTR` is omitted. If both annotation toggles are off and `Show Filename`
+is also off, no footer is added. The filename footer line is controlled by the
+setup `Show Filename` toggle:
 
 ```text
 FILE frame_00001.bmp

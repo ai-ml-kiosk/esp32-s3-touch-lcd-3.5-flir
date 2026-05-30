@@ -730,8 +730,10 @@ bool CaptureStorage::writeBmp24(const char* path,
     return false;
   }
 
-  const uint16_t footerHeight = settings.includeFilenameInCapture ? kCaptureFooterHeightWithFilename
-                                                                  : kCaptureFooterHeight;
+  const bool includeTemperatureFooter = settings.showHotColdDetails || settings.showCenterTemperature;
+  const uint16_t footerHeight = settings.includeFilenameInCapture
+                                    ? (includeTemperatureFooter ? kCaptureFooterHeightWithFilename : 14)
+                                    : (includeTemperatureFooter ? kCaptureFooterHeight : 0);
   const uint16_t outputHeight = height + footerHeight;
   const uint32_t rowSize = ((static_cast<uint32_t>(width) * 3 + 3) / 4) * 4;
   const uint32_t pixelDataSize = rowSize * outputHeight;
@@ -761,12 +763,25 @@ bool CaptureStorage::writeBmp24(const char* path,
 
   uint8_t row[1536] = {};
   char tempLine[80] = {};
-  snprintf(tempLine,
-           sizeof(tempLine),
-           "HIGH %.1fC  LOW %.1fC  CTR %.1fC",
-           stats.maxC,
-           stats.minC,
-           stats.centerC);
+  if (settings.showHotColdDetails && settings.showCenterTemperature) {
+    snprintf(tempLine,
+             sizeof(tempLine),
+             "HIGH %.1fC  LOW %.1fC  CTR %.1fC",
+             stats.maxC,
+             stats.minC,
+             stats.centerC);
+  } else if (settings.showHotColdDetails) {
+    snprintf(tempLine,
+             sizeof(tempLine),
+             "HIGH %.1fC  LOW %.1fC",
+             stats.maxC,
+             stats.minC);
+  } else if (settings.showCenterTemperature) {
+    snprintf(tempLine,
+             sizeof(tempLine),
+             "CTR %.1fC",
+             stats.centerC);
+  }
   char hotLine[24] = {};
   char coldLine[24] = {};
   snprintf(hotLine, sizeof(hotLine), "H %.1fC", stats.maxC);
@@ -790,45 +805,78 @@ bool CaptureStorage::writeBmp24(const char* path,
         row[offset++] = greenFrom565(color);
         row[offset++] = redFrom565(color);
       }
-      const int16_t hotLabelW = static_cast<int16_t>(strlen(hotLine) * 12 + 6);
-      int16_t hotLabelX = static_cast<int16_t>(hotX) + 10;
-      if (hotLabelX + hotLabelW >= static_cast<int16_t>(width)) {
-        hotLabelX = static_cast<int16_t>(hotX) - hotLabelW - 10;
-      }
-      if (hotLabelX < 0) {
-        hotLabelX = 0;
-      }
-      const int16_t hotLabelY = hotY > 24 ? static_cast<int16_t>(hotY) - 24 : static_cast<int16_t>(hotY) + 12;
-      drawRectToRow(row, rowSize, width, y, static_cast<int16_t>(hotX) - 7, static_cast<int16_t>(hotY) - 7, 15, 15, 255, 255, 0);
-      fillRectToRow(row, rowSize, width, y, hotLabelX - 2, hotLabelY - 2, hotLabelW, 18, 0, 0, 0);
-      drawTextToRowScaled(row, rowSize, width, y, hotLabelX + 1, hotLabelY + 1, hotLine, 2, 255, 255, 0);
+      if (settings.showHotColdDetails) {
+        drawRectToRow(row, rowSize, width, y, static_cast<int16_t>(hotX) - 7, static_cast<int16_t>(hotY) - 7, 15, 15, 255, 255, 0);
+        drawRectToRow(row, rowSize, width, y, static_cast<int16_t>(coldX) - 7, static_cast<int16_t>(coldY) - 7, 15, 15, 96, 220, 255);
+        const int16_t hotLabelW = static_cast<int16_t>(strlen(hotLine) * 12 + 6);
+        int16_t hotLabelX = static_cast<int16_t>(hotX) + 10;
+        if (hotLabelX + hotLabelW >= static_cast<int16_t>(width)) {
+          hotLabelX = static_cast<int16_t>(hotX) - hotLabelW - 10;
+        }
+        if (hotLabelX < 0) {
+          hotLabelX = 0;
+        }
+        const int16_t hotLabelY = hotY > 24 ? static_cast<int16_t>(hotY) - 24 : static_cast<int16_t>(hotY) + 12;
+        fillRectToRow(row, rowSize, width, y, hotLabelX - 2, hotLabelY - 2, hotLabelW, 18, 0, 0, 0);
+        drawTextToRowScaled(row, rowSize, width, y, hotLabelX + 1, hotLabelY + 1, hotLine, 2, 255, 255, 0);
 
-      const int16_t coldLabelW = static_cast<int16_t>(strlen(coldLine) * 12 + 6);
-      int16_t coldLabelX = static_cast<int16_t>(coldX) + 10;
-      if (coldLabelX + coldLabelW >= static_cast<int16_t>(width)) {
-        coldLabelX = static_cast<int16_t>(coldX) - coldLabelW - 10;
+        const int16_t coldLabelW = static_cast<int16_t>(strlen(coldLine) * 12 + 6);
+        int16_t coldLabelX = static_cast<int16_t>(coldX) + 10;
+        if (coldLabelX + coldLabelW >= static_cast<int16_t>(width)) {
+          coldLabelX = static_cast<int16_t>(coldX) - coldLabelW - 10;
+        }
+        if (coldLabelX < 0) {
+          coldLabelX = 0;
+        }
+        const int16_t coldLabelY = coldY > 24 ? static_cast<int16_t>(coldY) - 24 : static_cast<int16_t>(coldY) + 12;
+        fillRectToRow(row, rowSize, width, y, coldLabelX - 2, coldLabelY - 2, coldLabelW, 18, 0, 0, 0);
+        drawTextToRowScaled(row, rowSize, width, y, coldLabelX + 1, coldLabelY + 1, coldLine, 2, 96, 220, 255);
       }
-      if (coldLabelX < 0) {
-        coldLabelX = 0;
+      if (settings.showCenterTemperature) {
+        const int16_t centerX = static_cast<int16_t>(width / 2);
+        const int16_t centerY = static_cast<int16_t>(height / 2);
+        fillRectToRow(row, rowSize, width, y, centerX - 10, centerY, 21, 2, 255, 255, 255);
+        fillRectToRow(row, rowSize, width, y, centerX, centerY - 10, 2, 21, 255, 255, 255);
+
+        char centerLine[24] = {};
+        snprintf(centerLine, sizeof(centerLine), "C %.1fC", stats.centerC);
+        const int16_t centerLabelW = static_cast<int16_t>(strlen(centerLine) * 12 + 6);
+        int16_t centerLabelX = centerX + 12;
+        if (centerLabelX + centerLabelW >= static_cast<int16_t>(width)) {
+          centerLabelX = centerX - centerLabelW - 12;
+        }
+        if (centerLabelX < 0) {
+          centerLabelX = 0;
+        }
+        const int16_t centerLabelY = centerY > 24 ? centerY - 24 : centerY + 12;
+        fillRectToRow(row, rowSize, width, y, centerLabelX - 2, centerLabelY - 2, centerLabelW, 18, 0, 0, 0);
+        drawTextToRowScaled(row, rowSize, width, y, centerLabelX + 1, centerLabelY + 1, centerLine, 2, 255, 255, 255);
       }
-      const int16_t coldLabelY = coldY > 24 ? static_cast<int16_t>(coldY) - 24 : static_cast<int16_t>(coldY) + 12;
-      drawRectToRow(row, rowSize, width, y, static_cast<int16_t>(coldX) - 7, static_cast<int16_t>(coldY) - 7, 15, 15, 96, 220, 255);
-      fillRectToRow(row, rowSize, width, y, coldLabelX - 2, coldLabelY - 2, coldLabelW, 18, 0, 0, 0);
-      drawTextToRowScaled(row, rowSize, width, y, coldLabelX + 1, coldLabelY + 1, coldLine, 2, 96, 220, 255);
     } else {
       const uint16_t footerY = static_cast<uint16_t>(y - height);
-      drawTextToRow(row,
-                    rowSize,
-                    width,
-                    footerY,
-                    6,
-                    settings.includeFilenameInCapture ? 4 : 7,
-                    tempLine,
-                    255,
-                    255,
-                    255);
+      if (includeTemperatureFooter) {
+        drawTextToRow(row,
+                      rowSize,
+                      width,
+                      footerY,
+                      6,
+                      settings.includeFilenameInCapture ? 4 : 7,
+                      tempLine,
+                      255,
+                      255,
+                      255);
+      }
       if (settings.includeFilenameInCapture) {
-        drawTextToRow(row, rowSize, width, footerY, 6, 16, fileLine, 180, 200, 220);
+        drawTextToRow(row,
+                      rowSize,
+                      width,
+                      footerY,
+                      6,
+                      includeTemperatureFooter ? 16 : 3,
+                      fileLine,
+                      180,
+                      200,
+                      220);
       }
       offset = static_cast<uint32_t>(width) * 3;
     }

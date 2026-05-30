@@ -1,9 +1,9 @@
 # FLIR App Design
 
-This document is the target design for the full Waveshare
-ESP32-S3-Touch-LCD-3.5B FLIR application. The current firmware scaffold is a
-bring-up build that initializes Serial, FLIR CCI/I2C, and FLIR VoSPI pins; the
-full capture/render/storage app described here is the next implementation stage.
+This document describes the implemented design for the Waveshare
+ESP32-S3-Touch-LCD-3.5B FLIR application. The firmware initializes the built-in
+LCD/touch/TF-card paths, reads real FLIR Lepton VoSPI frames, renders the live
+thermal UI, and saves annotated captures to the onboard TF card.
 
 ## Expected Runtime UI
 
@@ -25,12 +25,18 @@ onboard QMI8658 6-axis IMU on the internal I2C bus. The firmware reads the raw
 accelerometer gravity vector and auto-rotates between landscape and portrait
 after a sustained 500 ms physical orientation change. The status bar should
 place the active orientation icon at the left edge of the screen, followed by a
-zoom toggle. The orientation icon uses a wide display glyph in landscape and a
-tall display glyph in portrait, but it is not a touch button. The zoom toggle
-uses a magnifier icon with plus/minus state; zoom mode renders a center crop of
-the Lepton frame and remaps hot/cold marker positions to the visible crop. The
-selected orientation should be saved with other viewer
-settings so the device boots back into the user's last chosen layout.
+zoom toggle, a hot/cold annotation toggle, and a center annotation toggle. The
+orientation icon uses a wide display glyph in landscape and a tall display glyph
+in portrait, but it is not a touch button. The zoom toggle is icon-only and has
+no visible button background; zoom mode renders a center crop of the Lepton
+frame and remaps hot/cold marker positions to the visible crop. The hot/cold
+toggle controls only the square hot/cold markers and their labels on the live
+thermal viewport and captured BMP. The center toggle controls only the center
+plus marker and center temperature label on the live viewport and captured BMP.
+Palette-scale temperatures and the readout panel are always shown and are not
+affected by these annotation toggles. The selected orientation should be saved
+with other viewer settings so the device boots back into the user's last chosen
+layout.
 Portrait mode keeps the palette scale and its high/low temperature labels in a
 narrow strip beside the thermal viewport, matching the landscape diagram. It
 does not use the older wide right-side readout column, so most of the portrait
@@ -82,9 +88,11 @@ gravity-vector auto-rotation selects landscape or portrait. When disabled, the
 `Orientation` setting manually selects `Landscape` or `Portrait` and the display
 and touch mapping are reindexed when setup is saved.
 The setup screen includes a `Show Filename` toggle for captured BMP images.
-Saved BMPs always include a footer with `HIGH`, `LOW`, and `CTR` temperatures.
-When `Show Filename` is enabled, the footer also includes the saved BMP
-filename.
+Captured BMP annotation content follows the runtime status-bar annotation
+toggles: high/low enabled records `HIGH` and `LOW`, and center enabled records
+`CTR`. When both annotation toggles are off, the temperature footer is omitted
+unless `Show Filename` is enabled. When `Show Filename` is enabled, the footer
+also includes the saved BMP filename.
 The setup screen includes a `Raw` switch. Green/right means raw saving is
 enabled; gray/left means the capture button saves only the annotated BMP. The
 annotated BMP is always saved.
@@ -438,9 +446,10 @@ Saves files under the active setup save path on the TF card. The default
 path is `/flir`:
 
 - `frame_00001.raw`: raw radiometric 14-bit values stored as little-endian `uint16_t`.
-- `frame_00001.bmp`: processed display buffer plus a black footer with `HIGH`,
-  `LOW`, and `CTR` temperatures. The setup `Show Filename` option controls
-  whether the footer also includes `FILE frame_00001.bmp`.
+- `frame_00001.bmp`: processed display buffer plus optional annotation overlays
+  and a black footer. The runtime hot/cold and center status-bar toggles control
+  which temperature annotation values are written. The setup `Show Filename`
+  option controls whether the footer also includes `FILE frame_00001.bmp`.
 
 Current filename policy:
 
@@ -465,9 +474,14 @@ When tapped:
    TF-card path.
 2. The raw 14-bit frame is written beside it only when the setup `Raw` option is
    enabled.
-3. The bottom status line shows the saved base filename.
-4. The review/delete icon opens the latest saved capture record and can delete
+3. The BMP annotation overlays and footer follow the current hot/cold and center
+   status-bar toggles at the moment `CAP` is pressed.
+4. The bottom status line shows the saved base filename.
+5. The review/delete icon opens the latest saved capture record and can delete
    the BMP and optional raw pair.
+
+For a complete record of bring-up and debugging decisions made on this hardware,
+see [Troubleshooting Actions Log](troubleshooting-actions.md).
 
 ## Troubleshooting Guide
 
