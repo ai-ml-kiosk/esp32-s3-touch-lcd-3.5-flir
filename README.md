@@ -24,6 +24,16 @@ pio run
 pio run --target upload
 ```
 
+For a specific serial port:
+
+```bash
+pio run --target upload --upload-port /dev/cu.usbmodem1301
+```
+
+PlatformIO uses Espressif's `esptool` internally for ESP32-S3 flashing. You can
+see this in upload logs as `tool-esptoolpy` and `esptool v...`, so a normal
+source-tree upload does not require installing `esptool.py` separately.
+
 ## Release Firmware Binaries
 
 Tagged releases publish downloadable firmware assets through GitHub Actions.
@@ -41,6 +51,28 @@ Release assets:
 - `waveshare-esp32-s3-touch-lcd-35b-flir-firmware.factory.bin`: combined image
   for full restore from offset `0x0`.
 - `README-flash.md`: flashing commands for the release assets.
+
+Preferred upload from this source tree remains PlatformIO:
+
+```bash
+pio run --target upload --upload-port /dev/cu.usbmodem1301
+```
+
+For a full restore from a downloaded release asset, flash the factory image at
+offset `0x0` with Espressif `esptool`. This may be available as `esptool.py` or
+`esptool`, depending on how it was installed:
+
+```bash
+esptool.py --chip esp32s3 --port /dev/cu.usbmodem1301 --baud 921600 write_flash 0x0 waveshare-esp32-s3-touch-lcd-35b-flir-firmware.factory.bin
+```
+
+If `esptool.py` is not on your shell path, install/use it through PlatformIO or
+Python:
+
+```bash
+python -m pip install esptool
+python -m esptool --chip esp32s3 --port /dev/cu.usbmodem1301 --baud 921600 write_flash 0x0 waveshare-esp32-s3-touch-lcd-35b-flir-firmware.factory.bin
+```
 
 To build the same artifacts locally:
 
