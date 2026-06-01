@@ -33,6 +33,7 @@ AppSettings SettingsStore::load() {
   preferences.getString("dateFmt", settings.dateFormat, sizeof(settings.dateFormat));
   preferences.getString("timeFmt", settings.timeFormat, sizeof(settings.timeFormat));
   settings.landscape = preferences.getBool("landscape", settings.landscape);
+  settings.displayRotation = preferences.getUChar("rotation", settings.landscape ? 1 : 0);
   settings.autoRotate = preferences.getBool("autoRot", settings.autoRotate);
   settings.inactivitySleepSeconds =
       preferences.getUShort("idleSleep", settings.inactivitySleepSeconds);
@@ -46,6 +47,20 @@ AppSettings SettingsStore::load() {
       preferences.getBool("showHiLo", settings.showHotColdDetails);
   settings.showCenterTemperature =
       preferences.getBool("showCtr", settings.showCenterTemperature);
+  settings.imageQualityMode =
+      preferences.getUChar("quality", settings.imageQualityMode);
+  settings.autoFfcEnabled =
+      preferences.getBool("autoFfc", settings.autoFfcEnabled);
+  settings.clipDurationSeconds =
+      preferences.getUChar("clipSec", settings.clipDurationSeconds);
+  settings.paletteMode =
+      preferences.getUChar("palette", settings.paletteMode);
+  settings.zoomed =
+      preferences.getBool("zoomed", settings.zoomed);
+  settings.soundEnabled =
+      preferences.getBool("sound", settings.soundEnabled);
+  settings.soundVolume =
+      preferences.getUChar("soundVol", settings.soundVolume);
   preferences.end();
 
   if (settings.savePath[0] != '/') {
@@ -57,6 +72,22 @@ AppSettings SettingsStore::load() {
   if (settings.temperatureOffsetTenths < -50 || settings.temperatureOffsetTenths > 50) {
     settings.temperatureOffsetTenths = 0;
   }
+  if (settings.imageQualityMode > 2) {
+    settings.imageQualityMode = 1;
+  }
+  if (settings.displayRotation > 3) {
+    settings.displayRotation = settings.landscape ? 1 : 0;
+  }
+  if (settings.clipDurationSeconds < 1 || settings.clipDurationSeconds > 20) {
+    settings.clipDurationSeconds = 3;
+  }
+  if (settings.paletteMode > 9) {
+    settings.paletteMode = 0;
+  }
+  if (settings.soundVolume > 100) {
+    settings.soundVolume = 80;
+  }
+  settings.landscape = (settings.displayRotation == 1 || settings.displayRotation == 3);
   return settings;
 }
 
@@ -71,6 +102,7 @@ bool SettingsStore::save(const AppSettings& settings) {
   preferences.putString("dateFmt", settings.dateFormat);
   preferences.putString("timeFmt", settings.timeFormat);
   preferences.putBool("landscape", settings.landscape);
+  preferences.putUChar("rotation", settings.displayRotation);
   preferences.putBool("autoRot", settings.autoRotate);
   preferences.putUShort("idleSleep", settings.inactivitySleepSeconds);
   preferences.putShort("tempOff10", settings.temperatureOffsetTenths);
@@ -78,6 +110,13 @@ bool SettingsStore::save(const AppSettings& settings) {
   preferences.putBool("saveRaw", settings.saveRawCapture);
   preferences.putBool("showHiLo", settings.showHotColdDetails);
   preferences.putBool("showCtr", settings.showCenterTemperature);
+  preferences.putUChar("quality", settings.imageQualityMode);
+  preferences.putBool("autoFfc", settings.autoFfcEnabled);
+  preferences.putUChar("clipSec", settings.clipDurationSeconds);
+  preferences.putUChar("palette", settings.paletteMode);
+  preferences.putBool("zoomed", settings.zoomed);
+  preferences.putBool("sound", settings.soundEnabled);
+  preferences.putUChar("soundVol", settings.soundVolume);
   preferences.end();
   return true;
 }

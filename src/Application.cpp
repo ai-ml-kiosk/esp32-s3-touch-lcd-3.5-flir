@@ -13,6 +13,7 @@
 #include "board/BoardPins.h"
 #include "board/DisplayDriver.h"
 #include "board/ImuDriver.h"
+#include "board/SoundFeedback.h"
 #include "board/TouchDriver.h"
 #include "flir/LeptonVospi.h"
 #include "flir/SyntheticLepton.h"
@@ -30,6 +31,7 @@ constexpr uint8_t kLeptonCciAddress = 0x2A;
 constexpr uint16_t kLeptonCciRegStatus = 0x0002;
 constexpr uint16_t kLeptonCciRegCommand = 0x0004;
 constexpr uint16_t kLeptonCciRegDataLength = 0x0006;
+constexpr uint16_t kLeptonCciRegDataBuffer = 0x0008;
 constexpr uint16_t kLeptonCciRegPowerOn = 0x0000;
 constexpr uint16_t kLeptonCciBusyMask = 0x0001;
 constexpr uint16_t kLeptonCciBootedMask = 0x0004;
@@ -37,9 +39,19 @@ constexpr uint16_t kLeptonCciResponseMask = 0xFF00;
 constexpr uint16_t kLeptonCciResponseOk = 0x0000;
 constexpr uint16_t kLeptonOemPowerDownRunCommand = 0x4802;
 constexpr uint16_t kLeptonOemRebootRunCommand = 0x4842;
+constexpr uint16_t kLeptonSysFfcShutterModeGetCommand = 0x023C;
+constexpr uint16_t kLeptonSysFfcShutterModeSetCommand = 0x023D;
+constexpr uint16_t kLeptonFfcModeManual = 0;
+constexpr uint16_t kLeptonFfcModeAuto = 1;
+constexpr uint8_t kAxp2101Address = 0x34;
+constexpr uint8_t kAxp2101RegChipId = 0x03;
+constexpr uint8_t kAxp2101RegCommonConfig = 0x10;
+constexpr uint8_t kAxp2101ChipId = 0x4A;
+constexpr uint8_t kAxp2101PowerOffBit = 0x01;
 constexpr uint32_t kFrameIntervalMs = 116;
 constexpr uint32_t kImuPollIntervalMs = 100;
 constexpr uint32_t kAutoRotationDebounceMs = 500;
+constexpr uint32_t kSoftwarePowerOffGraceMs = 5000;
 constexpr int32_t kAutoRotationMinAccel = 2500;
 constexpr int32_t kAutoRotationAxisMargin = 800;
 constexpr size_t kSerialCommandCapacity = 48;
@@ -47,6 +59,7 @@ constexpr size_t kSerialCommandCapacity = 48;
 DisplayDriver display;
 TouchDriver touch;
 ImuDriver imu;
+SoundFeedback sound;
 TwoWire flirCciWire(1);
 SettingsStore settingsStore;
 CaptureStorage storage;
@@ -76,17 +89,123 @@ ImuAccelRaw lastImuAccel;
 bool needsRender = true;
 bool leptonLowPower = false;
 bool displayOffForIdleSleep = false;
+bool softwarePowerOff = false;
 bool touchWasActive = false;
 bool orientationCandidateLandscape = true;
+uint8_t orientationCandidateRotation = 1;
+uint8_t appliedDisplayRotation = 255;
 bool hasOrientationCandidate = false;
 bool lastImuReadOk = false;
 bool lastImuClassified = false;
 bool lastImuLandscape = true;
+bool pendingAutoFfcApply = false;
+bool thermalClipRecording = false;
+uint32_t thermalClipStartedMs = 0;
+uint8_t thermalClipDurationSeconds = 3;
+char thermalClipBasePath[96] = {};
 uint32_t leptonLowPowerSinceMs = 0;
 char serialCommandBuffer[kSerialCommandCapacity] = {};
 size_t serialCommandLength = 0;
 
 void renderFrame();
+bool requestLeptonLowPower();
+bool wakeLeptonFromLowPower();
+bool requestPmicPowerOff();
+
+uint16_t textPixelWidth(const char* text, uint8_t size) {
+  return text == nullptr ? 0 : static_cast<uint16_t>(strlen(text) * 6U * size);
+}
+
+void drawCenteredText(const char* text, int16_t centerX, int16_t y, uint16_t color, uint8_t size) {
+  const uint16_t w = textPixelWidth(text, size);
+  display.drawText(centerX - static_cast<int16_t>(w / 2), y, text, color, size);
+}
+
+void drawPowerOffOverlay(const char* line1, const char* line2) {
+  const DisplayInfo info = display.info();
+  const uint16_t panelW = info.width > 360 ? 300 : (info.width > 260 ? 240 : info.width - 32);
+  const uint16_t panelH = 92;
+  const int16_t panelX = static_cast<int16_t>((info.width - panelW) / 2);
+  const int16_t panelY = static_cast<int16_t>((info.height - panelH) / 2);
+  const int16_t centerX = static_cast<int16_t>(info.width / 2);
+  display.fillRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(15, 23, 42));
+  display.drawRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(14, 165, 233));
+  drawCenteredText(line1, centerX, panelY + 22, DisplayDriver::rgb565(248, 250, 252), 2);
+  drawCenteredText(line2, centerX, panelY + 56, DisplayDriver::rgb565(203, 213, 225), 1);
+  display.flush();
+}
+
+void stopThermalClip(const char* statusMessage) {
+  if (!thermalClipRecording) {
+    return;
+  }
+  storage.finishThermalClip();
+  thermalClipRecording = false;
+  thermalClipDurationSeconds = 3;
+  ui.setVideoClipActive(false);
+  if (thermalClipBasePath[0] != '\0' && strcasecmp(statusMessage, "Clip saved") == 0) {
+    char message[40] = {};
+    snprintf(message, sizeof(message), "Saved %s.tclip", thermalClipBasePath);
+    ui.showStatus(message);
+  } else {
+    ui.showStatus(statusMessage);
+  }
+  needsRender = true;
+}
+
+void requestSoftwarePowerOff() {
+  Serial.println("Software power switch requested");
+  ui.showStatus("Shutting down...");
+  needsRender = true;
+  renderFrame();
+  drawPowerOffOverlay("Shutting down", thermalClipRecording ? "Completing SD write..." : "Preparing storage...");
+  stopThermalClip("Clip saved");
+  storage.closeThermalClipPlayback();
+  for (int8_t seconds = static_cast<int8_t>(kSoftwarePowerOffGraceMs / 1000); seconds > 0; --seconds) {
+    char message[32] = {};
+    snprintf(message, sizeof(message), "Power off in %ds", seconds);
+    drawPowerOffOverlay("Shutting down", message);
+    delay(1000);
+    yield();
+  }
+  drawPowerOffOverlay("Shutting down", "Powering off camera...");
+  ui.showStatus("PMIC power off...");
+  needsRender = true;
+  renderFrame();
+  drawPowerOffOverlay("Shutting down", "PMIC power off...");
+  requestLeptonLowPower();
+  Serial.println("Requesting AXP2101 PMIC shutdown; wake requires physical PWR or power reconnect");
+  if (requestPmicPowerOff()) {
+    delay(1500);
+    Serial.println("AXP2101 shutdown command returned but board is still running; falling back to soft-off");
+  } else {
+    Serial.println("AXP2101 shutdown unavailable; falling back to soft-off");
+  }
+  display.fillScreen(0x0000);
+  display.flush();
+  display.setBacklight(false);
+  displayOffForIdleSleep = false;
+  softwarePowerOff = true;
+  needsRender = false;
+  Serial.println("Fallback software power-off state entered; touch screen once to wake");
+}
+
+void wakeFromSoftwarePowerOff() {
+  if (!softwarePowerOff) {
+    return;
+  }
+  Serial.println("Touch activity detected in software power-off state; waking");
+  display.setBacklight(true);
+  ui.showStatus("Waking...");
+  if (leptonLowPower) {
+    wakeLeptonFromLowPower();
+  }
+  softwarePowerOff = false;
+  displayOffForIdleSleep = false;
+  lastUserActivityMs = millis();
+  needsRender = true;
+  ui.showStatus("Awake");
+}
 
 const char* resetReasonName(esp_reset_reason_t reason) {
   switch (reason) {
@@ -242,6 +361,84 @@ bool leptonCciReadRegister(uint16_t reg, uint16_t* value) {
   return true;
 }
 
+bool axp2101ReadRegister(uint8_t reg, uint8_t* value) {
+  if (value == nullptr) {
+    return false;
+  }
+  Wire.beginTransmission(kAxp2101Address);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) {
+    return false;
+  }
+  if (Wire.requestFrom(kAxp2101Address, static_cast<uint8_t>(1)) != 1) {
+    return false;
+  }
+  *value = Wire.read();
+  return true;
+}
+
+bool axp2101WriteRegister(uint8_t reg, uint8_t value) {
+  Wire.beginTransmission(kAxp2101Address);
+  Wire.write(reg);
+  Wire.write(value);
+  return Wire.endTransmission() == 0;
+}
+
+bool requestPmicPowerOff() {
+  uint8_t chipId = 0;
+  if (!axp2101ReadRegister(kAxp2101RegChipId, &chipId)) {
+    Serial.println("AXP2101 PMIC not found at I2C 0x34");
+    return false;
+  }
+  if (chipId != kAxp2101ChipId) {
+    Serial.printf("Unexpected PMIC chip id at 0x34: 0x%02X; shutdown skipped\n", chipId);
+    return false;
+  }
+
+  uint8_t config = 0;
+  if (!axp2101ReadRegister(kAxp2101RegCommonConfig, &config)) {
+    Serial.println("AXP2101 common config read failed; shutdown skipped");
+    return false;
+  }
+
+  Serial.printf("AXP2101 detected chip_id=0x%02X; writing shutdown bit\n", chipId);
+  return axp2101WriteRegister(kAxp2101RegCommonConfig, config | kAxp2101PowerOffBit);
+}
+
+bool leptonCciWriteDataWords(const uint16_t* words, uint16_t wordCount) {
+  if (words == nullptr || wordCount == 0) {
+    return false;
+  }
+  flirCciWire.beginTransmission(kLeptonCciAddress);
+  flirCciWire.write(static_cast<uint8_t>(kLeptonCciRegDataBuffer >> 8));
+  flirCciWire.write(static_cast<uint8_t>(kLeptonCciRegDataBuffer & 0xFF));
+  for (uint16_t i = 0; i < wordCount; ++i) {
+    flirCciWire.write(static_cast<uint8_t>(words[i] >> 8));
+    flirCciWire.write(static_cast<uint8_t>(words[i] & 0xFF));
+  }
+  return flirCciWire.endTransmission() == 0;
+}
+
+bool leptonCciReadDataWords(uint16_t* words, uint16_t wordCount) {
+  if (words == nullptr || wordCount == 0 || wordCount > 16) {
+    return false;
+  }
+  flirCciWire.beginTransmission(kLeptonCciAddress);
+  flirCciWire.write(static_cast<uint8_t>(kLeptonCciRegDataBuffer >> 8));
+  flirCciWire.write(static_cast<uint8_t>(kLeptonCciRegDataBuffer & 0xFF));
+  if (flirCciWire.endTransmission(false) != 0) {
+    return false;
+  }
+  const uint8_t byteCount = static_cast<uint8_t>(wordCount * 2);
+  if (flirCciWire.requestFrom(kLeptonCciAddress, byteCount) != byteCount) {
+    return false;
+  }
+  for (uint16_t i = 0; i < wordCount; ++i) {
+    words[i] = (static_cast<uint16_t>(flirCciWire.read()) << 8) | flirCciWire.read();
+  }
+  return true;
+}
+
 bool waitForLeptonCciReady(uint32_t timeoutMs) {
   const uint32_t started = millis();
   while (millis() - started < timeoutMs) {
@@ -253,6 +450,8 @@ bool waitForLeptonCciReady(uint32_t timeoutMs) {
   }
   return false;
 }
+
+void holdLeptonDeselected();
 
 const char* cciResponseName(uint16_t status) {
   const uint16_t response = status & kLeptonCciResponseMask;
@@ -297,6 +496,60 @@ bool runLeptonCciCommand(uint16_t command, const char* label, uint32_t readyTime
   const bool ok = (status & kLeptonCciResponseMask) == kLeptonCciResponseOk;
   Serial.printf("Lepton CCI %s response=%s status=0x%04X\n", label, cciResponseName(status), status);
   return ok;
+}
+
+bool readLeptonFfcShutterMode(uint16_t* words, uint16_t wordCount) {
+  if (words == nullptr || wordCount == 0) {
+    return false;
+  }
+  if (!runLeptonCciCommand(kLeptonSysFfcShutterModeGetCommand, "SYS FFC shutter mode get", 1200)) {
+    return false;
+  }
+  return leptonCciReadDataWords(words, wordCount);
+}
+
+bool writeLeptonFfcShutterMode(uint16_t* words, uint16_t wordCount, bool autoEnabled) {
+  if (words == nullptr || wordCount == 0) {
+    return false;
+  }
+  words[0] = autoEnabled ? kLeptonFfcModeAuto : kLeptonFfcModeManual;
+  if (!waitForLeptonCciReady(1200)) {
+    return false;
+  }
+  if (!leptonCciWriteRegister(kLeptonCciRegDataLength, wordCount) ||
+      !leptonCciWriteDataWords(words, wordCount) ||
+      !leptonCciWriteRegister(kLeptonCciRegCommand, kLeptonSysFfcShutterModeSetCommand)) {
+    Serial.println("Lepton CCI SYS FFC shutter mode set failed to write");
+    return false;
+  }
+  if (!waitForLeptonCciReady(1200)) {
+    Serial.println("Lepton CCI SYS FFC shutter mode set timed out");
+    return false;
+  }
+  uint16_t status = 0;
+  if (!leptonCciReadRegister(kLeptonCciRegStatus, &status)) {
+    return false;
+  }
+  const bool ok = (status & kLeptonCciResponseMask) == kLeptonCciResponseOk;
+  Serial.printf("Lepton CCI SYS FFC auto=%s response=%s status=0x%04X\n",
+                autoEnabled ? "on" : "off",
+                cciResponseName(status),
+                status);
+  return ok;
+}
+
+bool setLeptonAutoFfc(bool autoEnabled) {
+#if defined(FLIR_USE_SYNTHETIC_FRAMES)
+  Serial.println("Auto FFC ignored: synthetic FLIR mode");
+  return true;
+#else
+  uint16_t ffcModeWords[16] = {};
+  if (!readLeptonFfcShutterMode(ffcModeWords, 16)) {
+    Serial.println("Lepton CCI FFC mode read failed; auto FFC unchanged");
+    return false;
+  }
+  return writeLeptonFfcShutterMode(ffcModeWords, 16, autoEnabled);
+#endif
 }
 
 bool waitForLeptonBootStatus(uint32_t timeoutMs) {
@@ -500,17 +753,21 @@ void escalateLeptonVospiRecovery(const char* reason) {
 }
 
 void printRuntimeStatus() {
-  Serial.printf("frame=%lu orientation=%s palette=%d temp_offset=%.1fC storage=%s heap=%u psram=%u low_power=%s",
+  Serial.printf("frame=%lu orientation=%s rotation=%u palette=%d quality=%u temp_offset=%.1fC auto_ffc=%s storage=%s heap=%u psram=%u low_power=%s",
                 static_cast<unsigned long>(frame.frameNumber),
                 settings.landscape ? "landscape" : "portrait",
+                settings.displayRotation,
                 static_cast<int>(ui.palette()),
+                settings.imageQualityMode,
                 static_cast<float>(settings.temperatureOffsetTenths) / 10.0f,
+                settings.autoFfcEnabled ? "on" : "off",
                 storage.isMounted() ? "ready" : "not-mounted",
                 ESP.getFreeHeap(),
                 ESP.getFreePsram(),
                 leptonLowPower ? "sleep" : "awake");
   Serial.printf(" idle_sleep=%s",
                 settings.inactivitySleepSeconds == 0 ? "off" : "on");
+  Serial.printf(" soft_power=%s", softwarePowerOff ? "off" : "on");
   if (settings.inactivitySleepSeconds != 0) {
     Serial.printf(" idle_timeout_s=%u idle_ms=%lu",
                   settings.inactivitySleepSeconds,
@@ -547,9 +804,10 @@ void printRuntimeStatus() {
 }
 
 void printSerialHelp() {
-  Serial.println("Serial commands: help, status, sleep, wake");
+  Serial.println("Serial commands: help, status, sleep, wake, poweroff");
   Serial.println("  sleep  - request Lepton OEM power-down over CCI and pause VoSPI reads");
   Serial.println("  wake   - recover CCI bus, write power-on register, wait for boot, restart VoSPI");
+  Serial.println("  poweroff - request AXP2101 PMIC shutdown; falls back to soft-off if unavailable");
   Serial.println("  status - print CCI ACK, low-power state, and VoSPI recovery counters");
 }
 
@@ -564,7 +822,13 @@ void handleSerialCommand(const char* command) {
     printRuntimeStatus();
   } else if (strcasecmp(command, "sleep") == 0) {
     requestLeptonLowPower();
+  } else if (strcasecmp(command, "poweroff") == 0 || strcasecmp(command, "off") == 0) {
+    requestSoftwarePowerOff();
   } else if (strcasecmp(command, "wake") == 0) {
+    if (softwarePowerOff) {
+      wakeFromSoftwarePowerOff();
+      return;
+    }
     if (displayOffForIdleSleep) {
       display.setBacklight(true);
       displayOffForIdleSleep = false;
@@ -629,14 +893,17 @@ bool allocateViewportBuffer() {
 }
 
 void updateOrientationIfNeeded(bool previousLandscape) {
-  if (previousLandscape == settings.landscape) {
+  (void)previousLandscape;
+  if (appliedDisplayRotation == settings.displayRotation) {
     return;
   }
 
   settingsStore.save(settings);
-  display.setLandscape(settings.landscape);
+  display.setRotation(settings.displayRotation);
   const DisplayInfo info = display.info();
-  touch.setOrientation(settings.landscape, info.width, info.height);
+  touch.setRotation(settings.displayRotation, info.width, info.height);
+  settings.landscape = settings.displayRotation == 1 || settings.displayRotation == 3;
+  appliedDisplayRotation = settings.displayRotation;
   touchWasActive = false;
   lastTouchActionMs = millis();
   allocateViewportBuffer();
@@ -661,19 +928,63 @@ bool classifyLandscapeFromGravity(const ImuAccelRaw& accel, bool* landscape) {
   return true;
 }
 
+bool classifyRotationFromGravity(const ImuAccelRaw& accel, uint8_t* rotation) {
+  if (rotation == nullptr) {
+    return false;
+  }
+  const int32_t absX = abs(static_cast<int32_t>(accel.x));
+  const int32_t absY = abs(static_cast<int32_t>(accel.y));
+  const int32_t dominant = absX > absY ? absX : absY;
+  const int32_t difference = abs(absX - absY);
+  if (dominant < kAutoRotationMinAccel || difference < kAutoRotationAxisMargin) {
+    return false;
+  }
+  if (absY > absX) {
+    *rotation = accel.y >= 0 ? 1 : 3;
+  } else {
+    *rotation = accel.x >= 0 ? 0 : 2;
+  }
+  return true;
+}
+
 bool settingsEqual(const AppSettings& left, const AppSettings& right) {
   return strcmp(left.savePath, right.savePath) == 0 &&
          strcmp(left.locale, right.locale) == 0 &&
          strcmp(left.dateFormat, right.dateFormat) == 0 &&
          strcmp(left.timeFormat, right.timeFormat) == 0 &&
          left.landscape == right.landscape &&
+         left.displayRotation == right.displayRotation &&
          left.autoRotate == right.autoRotate &&
          left.inactivitySleepSeconds == right.inactivitySleepSeconds &&
          left.temperatureOffsetTenths == right.temperatureOffsetTenths &&
          left.includeFilenameInCapture == right.includeFilenameInCapture &&
          left.saveRawCapture == right.saveRawCapture &&
          left.showHotColdDetails == right.showHotColdDetails &&
-         left.showCenterTemperature == right.showCenterTemperature;
+         left.showCenterTemperature == right.showCenterTemperature &&
+         left.imageQualityMode == right.imageQualityMode &&
+         left.autoFfcEnabled == right.autoFfcEnabled &&
+         left.clipDurationSeconds == right.clipDurationSeconds &&
+         left.paletteMode == right.paletteMode &&
+         left.zoomed == right.zoomed &&
+         left.soundEnabled == right.soundEnabled &&
+         left.soundVolume == right.soundVolume;
+}
+
+void playUiSound(ThermalUi::SoundEvent event) {
+  switch (event) {
+    case ThermalUi::SoundEvent::Click:
+      sound.playClick(settings.soundEnabled);
+      break;
+    case ThermalUi::SoundEvent::Alert:
+      sound.playAlert(settings.soundEnabled);
+      break;
+    case ThermalUi::SoundEvent::Scroll:
+      sound.playScroll(settings.soundEnabled);
+      break;
+    case ThermalUi::SoundEvent::None:
+    default:
+      break;
+  }
 }
 
 void updateAutoOrientation() {
@@ -685,6 +996,7 @@ void updateAutoOrientation() {
 
   ImuAccelRaw accel;
   bool candidateLandscape = settings.landscape;
+  uint8_t candidateRotation = settings.displayRotation;
   lastImuReadOk = imu.readAccel(accel);
   if (!lastImuReadOk) {
     lastImuClassified = false;
@@ -693,7 +1005,8 @@ void updateAutoOrientation() {
     return;
   }
   lastImuAccel = accel;
-  lastImuClassified = classifyLandscapeFromGravity(accel, &candidateLandscape);
+  lastImuClassified = classifyRotationFromGravity(accel, &candidateRotation);
+  candidateLandscape = candidateRotation == 1 || candidateRotation == 3;
   lastImuLandscape = candidateLandscape;
   if (!lastImuClassified) {
     hasOrientationCandidate = false;
@@ -701,15 +1014,16 @@ void updateAutoOrientation() {
     return;
   }
 
-  if (candidateLandscape == settings.landscape) {
+  if (candidateRotation == settings.displayRotation) {
     hasOrientationCandidate = false;
     orientationCandidateSinceMs = 0;
     return;
   }
 
-  if (!hasOrientationCandidate || orientationCandidateLandscape != candidateLandscape) {
+  if (!hasOrientationCandidate || orientationCandidateRotation != candidateRotation) {
     hasOrientationCandidate = true;
     orientationCandidateLandscape = candidateLandscape;
+    orientationCandidateRotation = candidateRotation;
     orientationCandidateSinceMs = now;
     return;
   }
@@ -719,11 +1033,13 @@ void updateAutoOrientation() {
   }
 
   const bool previousLandscape = settings.landscape;
+  settings.displayRotation = candidateRotation;
   settings.landscape = candidateLandscape;
-  Serial.printf("Auto-rotation: accel=(%d,%d,%d) -> %s\n",
+  Serial.printf("Auto-rotation: accel=(%d,%d,%d) -> rotation=%u %s\n",
                 accel.x,
                 accel.y,
                 accel.z,
+                settings.displayRotation,
                 settings.landscape ? "landscape" : "portrait");
   ui.showStatus(settings.landscape ? "Auto landscape" : "Auto portrait");
   updateOrientationIfNeeded(previousLandscape);
@@ -737,7 +1053,16 @@ void renderFrame() {
     return;
   }
   if (frame.frameNumber != 0) {
-    thermal.renderRgb565(frame, ui.palette(), viewportPixels, viewportWidth, viewportHeight, &stats, ui.zoomed(), settings.landscape);
+    thermal.renderRgb565(frame,
+                         ui.palette(),
+                         viewportPixels,
+                         viewportWidth,
+                         viewportHeight,
+                         &stats,
+                         ui.zoomed(),
+                         settings.landscape,
+                         settings.displayRotation,
+                         settings.imageQualityMode);
     const float offsetC = static_cast<float>(settings.temperatureOffsetTenths) / 10.0f;
     stats.minC += offsetC;
     stats.maxC += offsetC;
@@ -750,6 +1075,7 @@ void renderFrame() {
             viewportWidth,
             viewportHeight,
             settings,
+            storage,
             storage.isMounted(),
             storage.lastCaptureBasePath());
   display.flush();
@@ -775,17 +1101,24 @@ void setup() {
   ensureLeptonPoweredForStartup();
   rebootLeptonViaCci();
   waitForLeptonColdBoot();
+  setLeptonAutoFfc(settings.autoFfcEnabled);
 
   if (!display.begin(settings.landscape)) {
     Serial.println("Display initialization failed; firmware will continue with serial diagnostics only");
   }
+  display.setRotation(settings.displayRotation);
+  appliedDisplayRotation = settings.displayRotation;
   const DisplayInfo displayInfo = display.info();
   touch.begin(settings.landscape, displayInfo.width, displayInfo.height);
+  touch.setRotation(settings.displayRotation, displayInfo.width, displayInfo.height);
   imu.begin();
   storage.begin();
   lepton.begin();
+  sound.begin();
+  sound.setVolume(settings.soundVolume);
   ui.begin(display);
-  ui.render(display, frame, stats, nullptr, 0, 0, settings, storage.isMounted(), storage.lastCaptureBasePath());
+  ui.applySettings(settings);
+  ui.render(display, frame, stats, nullptr, 0, 0, settings, storage, storage.isMounted(), storage.lastCaptureBasePath());
   display.flush();
   allocateViewportBuffer();
 
@@ -820,7 +1153,10 @@ void loop() {
   }
 
   if (touchPressedEdge) {
-    if (leptonLowPower) {
+    if (softwarePowerOff) {
+      wakeFromSoftwarePowerOff();
+      touchConsumedForWake = true;
+    } else if (leptonLowPower) {
       Serial.println("Touch activity detected while Lepton is asleep; waking");
       if (displayOffForIdleSleep) {
         display.setBacklight(true);
@@ -836,7 +1172,7 @@ void loop() {
   }
 
   const uint32_t idleTimeoutMs = inactivitySleepMs();
-  if (!leptonLowPower && idleTimeoutMs != 0 && !ui.setupActive() &&
+  if (!softwarePowerOff && !leptonLowPower && idleTimeoutMs != 0 && !ui.setupActive() &&
       millis() - lastUserActivityMs >= idleTimeoutMs) {
     Serial.printf("Touch inactivity timeout reached after %u seconds; sleeping Lepton\n",
                   settings.inactivitySleepSeconds);
@@ -850,13 +1186,54 @@ void loop() {
     }
   }
 
-  const bool touchActionReady = touchActive && touchPressedEdge;
-  if (touchActionReady && !touchConsumedForWake && !leptonLowPower) {
+  const bool touchActionReady = ui.setupActive()
+                                    ? touchSampled
+                                    : (touchSampled &&
+                                       (ui.gestureActive() || touchPoint.touchCount >= 2 ||
+                                        (touchActive && touchPressedEdge)));
+  if (touchActionReady && !touchConsumedForWake && !leptonLowPower && !softwarePowerOff) {
     const AppSettings previousSettings = settings;
-    if (ui.handleTouch(touchPoint, settings, display, storage, frame, stats, viewportPixels, viewportWidth, viewportHeight)) {
+    const bool handled = ui.handleTouch(touchPoint, settings, display, storage, thermal, frame, stats, viewportPixels, viewportWidth, viewportHeight);
+    playUiSound(ui.consumeSoundEvent());
+    if (handled) {
       lastTouchActionMs = now;
       updateOrientationIfNeeded(previousLandscape);
+      if (previousSettings.autoFfcEnabled != settings.autoFfcEnabled) {
+        pendingAutoFfcApply = true;
+        ui.showStatus(settings.autoFfcEnabled ? "Auto FFC pending" : "Manual FFC pending");
+      }
+      if (ui.consumeVideoClipRequest()) {
+        if (thermalClipRecording) {
+          stopThermalClip("Clip saved");
+        } else {
+          char clipBasePath[96] = {};
+          if (storage.beginThermalClip(settings, clipBasePath, sizeof(clipBasePath))) {
+            strncpy(thermalClipBasePath, clipBasePath, sizeof(thermalClipBasePath) - 1);
+            thermalClipBasePath[sizeof(thermalClipBasePath) - 1] = '\0';
+            thermalClipRecording = true;
+            thermalClipStartedMs = now;
+            thermalClipDurationSeconds =
+                settings.clipDurationSeconds >= 1 && settings.clipDurationSeconds <= 20
+                    ? settings.clipDurationSeconds
+                    : 3;
+            ui.setVideoClipActive(true);
+            char message[40] = {};
+            snprintf(message, sizeof(message), "Recording %us %s.tclip", thermalClipDurationSeconds, thermalClipBasePath);
+            ui.showStatus(message);
+          } else {
+            thermalClipBasePath[0] = '\0';
+            ui.setVideoClipActive(false);
+            ui.showStatus("Clip start failed");
+          }
+        }
+      }
+      if (ui.consumeSoftPowerRequest()) {
+        requestSoftwarePowerOff();
+      }
       if (!settingsEqual(previousSettings, settings)) {
+        if (previousSettings.soundVolume != settings.soundVolume) {
+          sound.setVolume(settings.soundVolume);
+        }
         settingsStore.save(settings);
       }
       lastUserActivityMs = millis();
@@ -864,15 +1241,38 @@ void loop() {
     }
   }
 
-  if (!touchActive) {
+  if (!touchActive && !softwarePowerOff) {
     updateAutoOrientation();
   }
 
-  if (!leptonLowPower && now - lastFrameMs >= kFrameIntervalMs) {
+  if (!softwarePowerOff && ui.updatePlayback(storage, thermal, settings, viewportWidth, viewportHeight)) {
+    needsRender = true;
+  }
+
+  if (!softwarePowerOff && pendingAutoFfcApply && !touchActive && !ui.setupActive() && !leptonLowPower) {
+    pendingAutoFfcApply = false;
+    ui.showStatus("Applying FFC mode...");
+    needsRender = true;
+    renderFrame();
+    const bool autoFfcOk = setLeptonAutoFfc(settings.autoFfcEnabled);
+    ui.showStatus(autoFfcOk
+                      ? (settings.autoFfcEnabled ? "Auto FFC on" : "Manual FFC mode")
+                      : "Auto FFC failed");
+    needsRender = true;
+  }
+
+  if (!softwarePowerOff && !leptonLowPower && now - lastFrameMs >= kFrameIntervalMs) {
     lastFrameMs = now;
     if (lepton.readFrame(frame)) {
       lastGoodFrameMs = now;
       lastObservedRecoveryCount = lepton.recoveryCount();
+      if (thermalClipRecording) {
+        if (!storage.appendThermalClipFrame(frame.raw, kLeptonPixelCount)) {
+          stopThermalClip("Clip write failed");
+        } else if (millis() - thermalClipStartedMs >= static_cast<uint32_t>(thermalClipDurationSeconds) * 1000UL) {
+          stopThermalClip("Clip saved");
+        }
+      }
       renderFrame();
       needsRender = false;
 #if !defined(FLIR_USE_SYNTHETIC_FRAMES)
@@ -885,7 +1285,7 @@ void loop() {
     }
   }
 
-  if (needsRender) {
+  if (!softwarePowerOff && needsRender) {
     renderFrame();
     needsRender = false;
   }

@@ -38,12 +38,13 @@ From `ui/thermal_ui.py`:
 |---|---|
 | `lepton_vospi` | Dedicated SPI read loop, packet validation, frame assembly, resync. Implemented by `LeptonVospi`. |
 | `lepton_cci` | I2C/CCI control, status, optional FFC control, optional reset handling. |
-| `thermal_math` | TLinear to Celsius conversion, min/max detection, auto range, palette mapping. |
+| `thermal_math` | TLinear to Celsius conversion, min/max detection, percentile range smoothing, temporal/spatial denoise, bilinear upscaling, palette mapping. |
 | `display_driver` | Waveshare AXS15231B QSPI LCD initialization, drawing, backlight control. |
 | `touch_driver` | Built-in AXS15231B I2C touch sampling, calibration, debouncing. |
+| `sound_feedback` | Onboard ES8311/I2S audio initialization, persisted volume control, and procedural UI chimes for click, alert, and scroll events. |
 | `capture_storage` | Optional BMP/raw frame capture and logs on the onboard TF card. |
-| `setup_ui` | On-device settings screen for save path, locale/region, date/time format, orientation, touch inactivity sleep, and temperature offset calibration. |
-| `thermal_ui` | Main screen layout, buttons, orientation/zoom, status-bar annotation toggles, high/low markers, center marker. |
+| `setup_ui` | On-device settings screen for save path, orientation, touch inactivity timeout setting, temperature offset calibration, raw/filename capture switches, Auto FFC, clip duration, sound volume, fixed Save/Cancel actions, and reserved scroll lanes. |
+| `thermal_ui` | Main screen layout, compact icon controls, QMI8658 orientation, pinch zoom state, status-bar annotation toggles, custom spot markers, image-quality control, high/low markers, center marker, TF-card status, and software power-off. |
 | `settings` | Non-volatile settings in NVS, with optional TF-card config later. |
 
 `src/main.cpp` should remain a thin entry point. The top-level lifecycle belongs
@@ -98,7 +99,7 @@ Then add controls in this order:
 3. QMI8658 auto-rotation with 500 ms debounce.
 4. Capture to TF card.
 5. Settings persistence.
-6. Optional manual FFC button.
+6. Auto FFC setup configuration.
 7. Optional Lepton sleep/wake UI only after backend serial testing is reliable.
 
 ## ESP32-S3 Constraints
@@ -120,9 +121,17 @@ Then add controls in this order:
   VoSPI before OEM power-down, recovers the CCI bus before software power-on,
   waits for boot status, and restarts VoSPI before accepting the feature as UI
   ready.
-- Automatic touch-idle sleep should also turn off the LCD backlight through the
-  display driver. Wake paths must restore the backlight before camera recovery
-  status is shown.
+- Software power-off is PMIC-first. The bottom-right power icon and Serial
+  `poweroff` command request Lepton low-power, close playback resources, verify
+  the AXP2101 PMIC at I2C address `0x34`, then write the PMIC shutdown bit. A
+  successful PMIC shutdown stops the ESP32 completely and requires physical
+  `PWR`, charger insertion, or power reconnect to wake. If the PMIC is not
+  detected, firmware falls back to the older soft-off state: blank the panel,
+  turn off the LCD backlight, and suppress normal frame/render work until touch
+  or Serial `wake` restores the app.
+- Automatic touch-idle sleep remains disabled until CCI wake and VoSPI recovery
+  are stable enough for unattended operation. Wake paths must restore the
+  backlight before camera recovery status is shown.
 - Startup must also tolerate a Lepton left in software power-down by a previous
   firmware session. Send the CCI power-on register sequence before the normal
   startup OEM reboot and VoSPI begin.

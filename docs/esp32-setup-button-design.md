@@ -30,6 +30,7 @@ The setup screen shows live firmware state from `AppSettings`:
 | Calibration offset | Temperature display offset in degrees C. |
 | Show Filename | Whether saved BMP images include the filename in the bottom footer. |
 | Save raw frame | Whether `CAP` writes the binary `.raw` file next to the BMP. |
+| Auto FFC | Whether Lepton automatic FFC shutter mode is requested over CCI. |
 
 If no settings have been saved yet, firmware should use these defaults:
 
@@ -42,6 +43,7 @@ If no settings have been saved yet, firmware should use these defaults:
 | Calibration offset | `+0.0C` |
 | Show Filename | `On` |
 | Save raw frame | `On` |
+| Auto FFC | `On` |
 
 ## Touch Inactivity Sleep
 
@@ -54,22 +56,26 @@ Runtime policy:
 
 - Every valid touch press updates `lastUserActivityMs`.
 - If `idleSleepSeconds` is `0`, automatic sleep is disabled.
-- If `idleSleepSeconds` is greater than `0` and no touch is seen before the
-  timeout expires, firmware requests the existing backend Lepton CCI sleep path.
-- Automatic idle sleep turns the LCD backlight off after rendering the bottom
-  status message, reducing screen power draw and avoiding a glowing idle panel.
-- The first touch while the Lepton is asleep wakes the Lepton and is consumed by
-  the wake action. It must not also trigger the UI button underneath the finger.
-- Touch wake and Serial `wake` turn the backlight on before recovering Lepton
-  VoSPI. Manual Serial `sleep` leaves the screen on for diagnostics.
-- Setup mode suppresses automatic sleep so users are not interrupted while
-  changing settings.
-- Serial `sleep` and `wake` remain available for diagnostics.
+- The timeout value is persisted, but automatic idle sleep is currently disabled
+  in firmware until long-run Lepton CCI wake and VoSPI recovery are stable
+  enough for unattended use.
+- Manual Serial `sleep` and `wake` remain available for backend diagnostics.
+  Manual Serial `sleep` leaves the screen on so recovery can be observed.
+- The user-facing low-power path is the bottom-right software power icon and
+  Serial `poweroff`. This path stops active clip work, requests Lepton
+  low-power, verifies the AXP2101 PMIC at I2C `0x34`, and writes the PMIC
+  shutdown bit. After a successful PMIC shutdown, the ESP32 is off and requires
+  physical `PWR`, charger insertion, or power reconnect to wake.
+- If PMIC shutdown is not confirmed, firmware falls back to a soft-off state:
+  blank LCD, backlight off, and normal frame/render work suppressed until touch
+  or Serial `wake` restores the app.
+- Setup mode suppresses sleep and power transitions except for explicit Save,
+  Cancel, or the bottom-row power control.
 
 Setup should expose `Idle sleep` as seconds presets:
 
 ```text
-Off -> 30 sec -> 60 sec -> 120 sec -> 300 sec -> 600 sec -> Off
+Off <-> 30 sec <-> 60 sec <-> 120 sec <-> 300 sec <-> 600 sec
 ```
 
 This keeps the UI small enough for the 3.5 inch screen and avoids a full numeric
@@ -215,9 +221,11 @@ Cancel/Save actions at the bottom.
 +------------------------------------------------+
 | SETUP                                          |
 | Path:       /flir        Auto:       [ ON ]    |
-| Idle:       Off          Orient:     Auto      |
-| Cal:        +0.0C        Show Name:  [ ON ]    |
-|                         Raw:        [ ON ]     |
+| Idle:   [-] Off  [+]    Orient:     Auto      |
+| Cal:    [-] +0.0C [+]   Show Name:  [ ON ]    |
+| Volume: [-] 80%  [+]    Raw:        [ ON ]    |
+|                         Auto FFC:   [ ON ]     |
+|                         Clip: [-] 3 sec [+]    |
 |                                                |
 | [Cancel]                              [Save]   |
 +------------------------------------------------+
@@ -229,8 +237,22 @@ Boolean fields are rendered as toggle switches:
 - Gray track, knob left, `OFF`: disabled.
 
 The setup panel must remain scrollable as future settings are added. Save and
-Cancel stay fixed at the bottom of the setup panel while field rows can scroll
-within the content area.
+Cancel stay fixed at the bottom of the setup panel while field rows scroll
+within the content area. The scroll lane and arrow hit areas are reserved in both
+landscape and portrait so they do not overlap field values.
+
+Numeric fields that need both directions use `[-] value [+]` steppers:
+
+- Tap the left stepper zone of `Idle`, `Cal`, `Clip`, or `Volume` to decrease.
+- The center value zone is a separator and does not trigger an action.
+- Tap the right stepper zone of `Idle`, `Cal`, `Clip`, or `Volume` to increase.
+- Long labels should wrap instead of overlapping the stepper or switch.
+
+Sound feedback is driven by the Waveshare onboard ES8311 codec over I2S. The
+`Volume` setting is persisted in NVS and controls the codec output level. The
+firmware generates short procedural chimes instead of storing audio files:
+valid actions use a bright two-note click, invalid actions use a lower
+descending alert, and scroll gestures use a small tick.
 
 For text entry on the board, start with a small set of safe path presets:
 

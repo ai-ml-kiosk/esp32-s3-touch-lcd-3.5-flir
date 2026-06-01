@@ -33,8 +33,9 @@ pio device monitor
 ## Setup Button Design
 
 The `SETUP` button is an embedded ESP32 firmware feature. It should open an
-on-device LCD/touch setup screen for settings such as TF-card save path, locale,
-date/time format, and orientation.
+on-device LCD/touch setup screen for settings such as TF-card save path,
+orientation policy, calibration offset, raw/filename capture options, Auto FFC,
+clip duration, sound volume, and reserved scrollable fields.
 
 See [ESP32 Setup Button Design](docs/esp32-setup-button-design.md).
 

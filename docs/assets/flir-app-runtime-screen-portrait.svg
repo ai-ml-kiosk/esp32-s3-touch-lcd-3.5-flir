@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="980" height="860" viewBox="0 0 980 860" role="img" aria-labelledby="title desc">
   <title id="title">FLIR thermal app expected portrait runtime screen</title>
-  <desc id="desc">Mockup of the Waveshare 320 by 480 portrait touch screen showing live thermal viewport, status bar orientation indicator, icon-only zoom, hot/cold annotation toggle, center annotation toggle, palette scale, readouts, square markers, and buttons for palette, FFC, capture, review, and setup.</desc>
+  <desc id="desc">Mockup of the Waveshare 320 by 480 portrait touch screen showing live thermal viewport, status bar orientation indicator, two-finger pinch zoom state, hot/cold annotation toggle, center annotation toggle, custom spot markers, TF-card free-space status, palette scale, readouts, compact controls, and red PMIC shutdown power control.</desc>
   <defs>
     <style>
       .page { fill: #f7f8fb; }
@@ -79,8 +79,18 @@
   <rect x="470" y="174" width="7" height="2" fill="#e5e7eb"/>
   <rect x="463" y="161" width="2" height="7" fill="#e5e7eb"/>
   <rect x="463" y="180" width="2" height="7" fill="#e5e7eb"/>
-  <text class="label" x="492" y="179">LIVE</text>
-  <circle cx="534" cy="174" r="5" fill="#22c55e"/>
+  <rect x="482" y="166" width="16" height="16" fill="none" stroke="#f472b6" stroke-width="1.2"/>
+  <rect x="478" y="174" width="8" height="2" fill="#f472b6"/>
+  <rect x="494" y="174" width="8" height="2" fill="#f472b6"/>
+  <rect x="489" y="162" width="2" height="8" fill="#f472b6"/>
+  <rect x="489" y="178" width="2" height="8" fill="#f472b6"/>
+  <rect x="494" y="164" width="3" height="3" fill="#f472b6"/>
+  <rect x="486" y="172" width="3" height="3" fill="#f472b6"/>
+  <rect x="478" y="180" width="3" height="3" fill="#f472b6"/>
+  <text class="label" x="514" y="179">LIVE</text>
+  <circle cx="556" cy="174" r="5" fill="#22c55e"/>
+  <text class="tiny" x="594" y="170" text-anchor="end">TF OK</text>
+  <text class="tiny" x="594" y="184" text-anchor="end">FREE 14.8G</text>
 
   <rect x="344" y="208" width="224" height="334" fill="url(#thermal)"/>
   <rect x="344" y="208" width="224" height="334" fill="url(#hotBlob)" opacity="0.82"/>
@@ -100,6 +110,10 @@
   <line x1="438" y1="375" x2="474" y2="375" stroke="#f8fafc" stroke-width="3"/>
   <line x1="456" y1="357" x2="456" y2="393" stroke="#f8fafc" stroke-width="3"/>
   <text class="label" x="380" y="368">CTR 29.7 C</text>
+  <rect x="444" y="250" width="20" height="20" fill="none" stroke="#f472b6" stroke-width="3"/>
+  <line x1="437" y1="260" x2="471" y2="260" stroke="#f472b6" stroke-width="3"/>
+  <line x1="454" y1="243" x2="454" y2="277" stroke="#f472b6" stroke-width="3"/>
+  <text class="label" x="474" y="252">M1 31.4 C</text>
 
   <rect x="586" y="208" width="16" height="334" fill="url(#palette)"/>
   <text class="tiny" x="594" y="203" text-anchor="middle">38 C</text>
@@ -113,44 +127,53 @@
   <text class="tiny" x="540" y="576">PAL</text>
   <text class="label" x="540" y="596">IRON</text>
 
-  <rect class="button" x="344" y="624" width="42" height="24" rx="5"/>
-  <rect x="356" y="631" width="7" height="4" fill="#ef4444"/>
-  <rect x="365" y="631" width="7" height="4" fill="#facc15"/>
-  <rect x="356" y="637" width="7" height="4" fill="#22c55e"/>
-  <rect x="365" y="637" width="7" height="4" fill="#3b82f6"/>
-  <rect x="354" y="629" width="20" height="14" fill="none" stroke="#e5e7eb" stroke-width="1"/>
-  <rect class="button" x="398" y="624" width="42" height="24" rx="5"/>
-  <rect x="407" y="630" width="24" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
-  <rect x="410" y="633" width="18" height="2.5" fill="#e5e7eb"/>
-  <rect x="410" y="638" width="18" height="2.5" fill="#64748b"/>
-  <rect class="button" x="452" y="624" width="42" height="24" rx="5"/>
-  <rect x="460" y="632" width="26" height="12" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
-  <rect x="465" y="628" width="9" height="4" fill="#e5e7eb"/>
-  <rect x="469" y="635" width="8" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
-  <rect class="button" x="506" y="624" width="42" height="24" rx="5"/>
-  <rect x="515" y="630" width="24" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
-  <polygon points="520,633 520,641 527,637" fill="#e5e7eb"/>
-  <rect x="535" y="633" width="8" height="10" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
-  <rect class="button" x="560" y="624" width="42" height="24" rx="5"/>
-  <rect x="575" y="632" width="12" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
-  <rect x="579" y="627" width="4" height="5" fill="#e5e7eb"/>
-  <rect x="579" y="640" width="4" height="5" fill="#e5e7eb"/>
-  <rect x="569" y="634" width="6" height="4" fill="#e5e7eb"/>
-  <rect x="587" y="634" width="6" height="4" fill="#e5e7eb"/>
+  <rect class="button" x="344" y="624" width="30" height="24" rx="5"/>
+  <rect x="353" y="631" width="6" height="4" fill="#ef4444"/>
+  <rect x="361" y="631" width="6" height="4" fill="#facc15"/>
+  <rect x="353" y="637" width="6" height="4" fill="#22c55e"/>
+  <rect x="361" y="637" width="6" height="4" fill="#3b82f6"/>
+  <rect class="button" x="382" y="624" width="30" height="24" rx="5"/>
+  <rect x="387" y="630" width="20" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.4"/>
+  <rect x="391" y="640" width="4" height="4" fill="#64748b"/>
+  <rect x="397" y="636" width="4" height="8" fill="#e5e7eb"/>
+  <rect x="403" y="631" width="3" height="13" fill="#fffbeb"/>
+  <rect class="button" x="420" y="624" width="30" height="24" rx="5"/>
+  <rect x="424" y="632" width="22" height="12" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="429" y="628" width="8" height="4" fill="#e5e7eb"/>
+  <rect x="433" y="635" width="7" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
+  <rect class="button" x="458" y="624" width="30" height="24" rx="5"/>
+  <rect x="463" y="630" width="20" height="14" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <polygon points="468,633 468,641 475,637" fill="#e5e7eb"/>
+  <rect x="479" y="633" width="7" height="10" fill="none" stroke="#e5e7eb" stroke-width="1.2"/>
+  <rect class="button" x="496" y="624" width="30" height="24" rx="5"/>
+  <rect x="505" y="632" width="12" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.5"/>
+  <rect x="509" y="627" width="4" height="5" fill="#e5e7eb"/>
+  <rect x="509" y="640" width="4" height="5" fill="#e5e7eb"/>
+  <rect class="button" x="534" y="624" width="30" height="24" rx="5"/>
+  <rect x="544" y="633" width="10" height="8" fill="none" stroke="#e5e7eb" stroke-width="1.4"/>
+  <rect x="547" y="628" width="4" height="5" fill="#e5e7eb"/>
+  <rect x="547" y="641" width="4" height="5" fill="#e5e7eb"/>
+  <rect x="539" y="636" width="5" height="3" fill="#e5e7eb"/>
+  <rect x="554" y="636" width="5" height="3" fill="#e5e7eb"/>
+  <rect class="button" x="572" y="624" width="30" height="24" rx="5"/>
+  <rect x="579" y="633" width="15" height="12" fill="none" stroke="#f87171" stroke-width="1.7"/>
+  <rect x="577" y="637" width="3" height="6" fill="#f87171"/>
+  <rect x="593" y="637" width="3" height="6" fill="#f87171"/>
+  <rect x="585" y="627" width="3" height="11" fill="#f87171"/>
 
   <path class="line" d="M552 174 H742"/>
   <text class="calloutTitle" x="758" y="168">Status bar</text>
   <text class="callout" x="758" y="193">
-    <tspan x="758" dy="0">orientation, zoom,</tspan>
-    <tspan x="758" dy="20">hot/cold and center</tspan>
-    <tspan x="758" dy="20">annotation toggles</tspan>
+    <tspan x="758" dy="0">orientation, Z1X/Z2X,</tspan>
+    <tspan x="758" dy="20">center annotation, marker</tspan>
+    <tspan x="758" dy="20">clear, TF/free space; pinch zoom</tspan>
   </text>
 
-  <path class="line" d="M572 324 H742"/>
-  <text class="calloutTitle" x="758" y="318">Thermal viewport</text>
-  <text class="callout" x="758" y="343">
-    <tspan x="758" dy="0">80x60 Lepton source</tspan>
-    <tspan x="758" dy="20">scaled in portrait view</tspan>
+  <path class="line-left" d="M344 324 H230"/>
+  <text class="calloutTitle" x="82" y="286">Thermal viewport</text>
+  <text class="callout" x="82" y="311">
+    <tspan x="82" dy="0">80x60 Lepton source</tspan>
+    <tspan x="82" dy="20">scaled in portrait view</tspan>
   </text>
 
   <path class="line" d="M602 410 L650 410 L650 452 H742"/>
@@ -160,32 +183,36 @@
     <tspan x="758" dy="20">temperature range</tspan>
   </text>
 
-  <path class="line" d="M602 580 L700 580 L700 572 H742"/>
-  <text class="calloutTitle" x="758" y="566">Readouts</text>
-  <text class="callout" x="758" y="591">
-    <tspan x="758" dy="0">center, range,</tspan>
-    <tspan x="758" dy="20">active palette</tspan>
+  <path class="line-left" d="M534 580 L260 580"/>
+  <text class="calloutTitle" x="82" y="558">Readouts</text>
+  <text class="callout" x="82" y="583">
+    <tspan x="82" dy="0">center, range,</tspan>
+    <tspan x="82" dy="20">active palette</tspan>
   </text>
 
   <path class="line-left" d="M396 486 H230"/>
   <text class="calloutTitle" x="82" y="470">Spot markers</text>
   <text class="callout" x="82" y="495">
     <tspan x="82" dy="0">toggle-controlled square</tspan>
-    <tspan x="82" dy="20">hot/cold markers and labels</tspan>
+    <tspan x="82" dy="20">hot/cold markers plus</tspan>
+    <tspan x="82" dy="20">up to three custom spots</tspan>
   </text>
 
-  <path class="line-left" d="M365 648 V684 H240"/>
-  <text class="calloutTitle" x="82" y="666">PAL button</text>
-  <text class="callout" x="82" y="691">
-    <tspan x="82" dy="0">Ironbow, White Hot,</tspan>
-    <tspan x="82" dy="20">Black Hot, Histogram</tspan>
+  <path class="line-left" d="M362 648 V654 H240"/>
+  <text class="calloutTitle" x="82" y="636">Palette icon</text>
+  <text class="callout" x="82" y="661">
+    <tspan x="82" dy="0">Cycles Ironbow, White,</tspan>
+    <tspan x="82" dy="20">Black, Histogram, Lava,</tspan>
+    <tspan x="82" dy="20">Hot Iron, Medical, Arctic,</tspan>
+    <tspan x="82" dy="20">Rainbow, and Red Hot</tspan>
   </text>
 
-  <path class="line-left" d="M419 648 V760 H240"/>
-  <text class="calloutTitle" x="82" y="742">FFC button</text>
-  <text class="callout" x="82" y="767">
-    <tspan x="82" dy="0">flat-field correction</tspan>
-    <tspan x="82" dy="20">reduces drift and banding</tspan>
+  <path class="line" d="M406 648 V628 H742"/>
+  <text class="calloutTitle" x="758" y="610">Image quality icon</text>
+  <text class="callout" x="758" y="635">
+    <tspan x="758" dy="0">Cycles Detail,</tspan>
+    <tspan x="758" dy="20">Balanced, and Smooth</tspan>
+    <tspan x="758" dy="20">noise handling</tspan>
   </text>
 
   <path class="line-left" d="M391 162 H240"/>
@@ -193,26 +220,33 @@
   <text class="callout" x="82" y="169">
     <tspan x="82" dy="0">QMI8658 gravity vector</tspan>
     <tspan x="82" dy="20">selects orientation;</tspan>
-    <tspan x="82" dy="20">tap zoom, high/low, center</tspan>
+    <tspan x="82" dy="20">Z1X/Z2X, high/low, center</tspan>
   </text>
 
-  <path class="line" d="M473 648 V682 H742"/>
-  <text class="calloutTitle" x="758" y="664">CAP button</text>
-  <text class="callout" x="758" y="689">
+  <path class="line" d="M435 648 V704 H742"/>
+  <text class="calloutTitle" x="758" y="686">CAP button</text>
+  <text class="callout" x="758" y="711">
     <tspan x="758" dy="0">saves timestamped BMP</tspan>
     <tspan x="758" dy="20">and optional raw frame</tspan>
   </text>
 
-  <path class="line" d="M581 648 V746 H742"/>
-  <text class="calloutTitle" x="758" y="728">SETUP button</text>
-  <text class="callout" x="758" y="753">
-    <tspan x="758" dy="0">opens settings for path,</tspan>
-    <tspan x="758" dy="20">idle, rotation, raw save</tspan>
+  <path class="line-left" d="M549 648 V764 H240"/>
+  <text class="calloutTitle" x="82" y="746">SETUP button</text>
+  <text class="callout" x="82" y="771">
+    <tspan x="82" dy="0">opens settings for path,</tspan>
+    <tspan x="82" dy="20">idle, rotation, raw save</tspan>
   </text>
 
-  <path class="line" d="M527 648 V810 H742"/>
-  <text class="calloutTitle" x="758" y="794">Review/Delete</text>
-  <text class="callout" x="758" y="819">
-    <tspan x="758" dy="0">opens latest capture</tspan>
+  <path class="line-left" d="M511 648 V824 H240"/>
+  <text class="calloutTitle" x="82" y="812">Review/Delete</text>
+  <text class="callout" x="82" y="837">
+    <tspan x="82" dy="0">opens latest capture</tspan>
+  </text>
+
+  <path class="line" d="M587 648 V762 H742"/>
+  <text class="calloutTitle" x="758" y="744">Power icon</text>
+  <text class="callout" x="758" y="769">
+    <tspan x="758" dy="0">red PMIC shutdown;</tspan>
+    <tspan x="758" dy="20">wake with physical PWR</tspan>
   </text>
 </svg>

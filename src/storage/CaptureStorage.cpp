@@ -59,6 +59,81 @@ uint16_t rgb565From888(uint8_t red, uint8_t green, uint8_t blue) {
   return ((red & 0xF8) << 8) | ((green & 0xFC) << 3) | (blue >> 3);
 }
 
+bool buildBasePath(const char* dir, const char* name, const char* extension, char* out, size_t outSize) {
+  if (dir == nullptr || name == nullptr || extension == nullptr || out == nullptr || outSize == 0) {
+    return false;
+  }
+  char filePath[112] = {};
+  if (name[0] == '/') {
+    snprintf(filePath, sizeof(filePath), "%s", name);
+  } else {
+    snprintf(filePath, sizeof(filePath), "%s/%s", dir, name);
+  }
+  const size_t pathLen = strlen(filePath);
+  const size_t extLen = strlen(extension);
+  if (pathLen <= extLen || strcmp(filePath + pathLen - extLen, extension) != 0) {
+    return false;
+  }
+  filePath[pathLen - extLen] = '\0';
+  strncpy(out, filePath, outSize - 1);
+  out[outSize - 1] = '\0';
+  return true;
+}
+
+bool sortedBaseAt(const char* dir, const char* extension, uint16_t index, char* out, size_t outSize) {
+  if (dir == nullptr || dir[0] == '\0' || extension == nullptr || out == nullptr || outSize == 0) {
+    return false;
+  }
+  out[0] = '\0';
+
+  char previous[112] = {};
+  char selected[112] = {};
+  bool hasPrevious = false;
+
+  for (uint16_t selectedIndex = 0; selectedIndex <= index; ++selectedIndex) {
+    File root = SD_MMC.open(dir);
+    if (!root || !root.isDirectory()) {
+      return false;
+    }
+
+    char best[112] = {};
+    bool found = false;
+    File file = root.openNextFile();
+    while (file) {
+      const char* name = file.name();
+      const size_t len = strlen(name);
+      const size_t extLen = strlen(extension);
+      if (!file.isDirectory() && len > extLen && strcmp(name + len - extLen, extension) == 0) {
+        char basePath[112] = {};
+        if (buildBasePath(dir, name, extension, basePath, sizeof(basePath)) &&
+            (!hasPrevious || strcmp(basePath, previous) > 0) &&
+            (!found || strcmp(basePath, best) < 0)) {
+          strncpy(best, basePath, sizeof(best) - 1);
+          best[sizeof(best) - 1] = '\0';
+          found = true;
+        }
+      }
+      file.close();
+      file = root.openNextFile();
+      yield();
+    }
+    root.close();
+
+    if (!found) {
+      return false;
+    }
+    strncpy(selected, best, sizeof(selected) - 1);
+    selected[sizeof(selected) - 1] = '\0';
+    strncpy(previous, best, sizeof(previous) - 1);
+    previous[sizeof(previous) - 1] = '\0';
+    hasPrevious = true;
+  }
+
+  strncpy(out, selected, outSize - 1);
+  out[outSize - 1] = '\0';
+  return true;
+}
+
 const uint8_t* glyphRows(char c) {
   static const uint8_t space[7] = {0, 0, 0, 0, 0, 0, 0};
   static const uint8_t plus[7] = {0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00};
@@ -411,6 +486,91 @@ bool CaptureStorage::saveCapture(const AppSettings& settings,
   return ok;
 }
 
+bool CaptureStorage::beginThermalClip(const AppSettings& settings, char* savedBasePath, size_t savedBasePathSize) {
+  if (!mounted_) {
+    return false;
+  }
+  if (clipActive_) {
+    finishThermalClip();
+  }
+  if (!ensureSavePath(settings.savePath)) {
+    Serial.println("Clip path validation failed");
+    return false;
+  }
+
+  char basePath[96];
+  nextBasePath(settings.savePath, basePath, sizeof(basePath));
+  if (savedBasePath != nullptr && savedBasePathSize > 0) {
+    strncpy(savedBasePath, basePath, savedBasePathSize - 1);
+    savedBasePath[savedBasePathSize - 1] = '\0';
+  }
+
+  char clipPath[112];
+  snprintf(clipPath, sizeof(clipPath), "%s.tclip", basePath);
+  clipFile_ = SD_MMC.open(clipPath, FILE_WRITE);
+  if (!clipFile_) {
+    Serial.printf("Thermal clip open failed: %s\n", clipPath);
+    return false;
+  }
+
+  clipFile_.write(reinterpret_cast<const uint8_t*>("FLIRTCLP"), 8);
+  writeU16(clipFile_, kLeptonWidth);
+  writeU16(clipFile_, kLeptonHeight);
+  writeU32(clipFile_, 0);
+  writeU32(clipFile_, 116);
+  clipFrameCount_ = 0;
+  clipActive_ = true;
+  strncpy(lastBasePath_, basePath, sizeof(lastBasePath_) - 1);
+  lastBasePath_[sizeof(lastBasePath_) - 1] = '\0';
+  Serial.printf("Thermal clip started: %s\n", clipPath);
+  return true;
+}
+
+bool CaptureStorage::appendThermalClipFrame(const uint16_t* raw14, size_t rawPixelCount) {
+  if (!clipActive_ || !clipFile_ || raw14 == nullptr || rawPixelCount != kLeptonPixelCount) {
+    return false;
+  }
+  const size_t bytes = rawPixelCount * sizeof(uint16_t);
+  const size_t written = clipFile_.write(reinterpret_cast<const uint8_t*>(raw14), bytes);
+  if (written != bytes) {
+    Serial.println("Thermal clip frame write failed");
+    finishThermalClip();
+    return false;
+  }
+  ++clipFrameCount_;
+  return true;
+}
+
+bool CaptureStorage::finishThermalClip() {
+  if (!clipActive_) {
+    return false;
+  }
+  if (clipFile_) {
+    clipFile_.seek(12);
+    writeU32(clipFile_, clipFrameCount_);
+    clipFile_.flush();
+    clipFile_.close();
+  }
+  Serial.printf("Thermal clip finished: frames=%lu\n", static_cast<unsigned long>(clipFrameCount_));
+  clipActive_ = false;
+  clipFrameCount_ = 0;
+  return true;
+}
+
+uint64_t CaptureStorage::totalBytes() const {
+  return mounted_ ? SD_MMC.totalBytes() : 0;
+}
+
+uint64_t CaptureStorage::usedBytes() const {
+  return mounted_ ? SD_MMC.usedBytes() : 0;
+}
+
+uint64_t CaptureStorage::freeBytes() const {
+  const uint64_t total = totalBytes();
+  const uint64_t used = usedBytes();
+  return total > used ? total - used : 0;
+}
+
 bool CaptureStorage::deleteLastCapture() {
   if (lastBasePath_[0] == '\0') {
     return false;
@@ -448,44 +608,7 @@ bool CaptureStorage::captureBaseAt(const char* dir, uint16_t index, char* out, s
   if (!mounted_ || dir == nullptr || dir[0] == '\0' || out == nullptr || outSize == 0) {
     return false;
   }
-  out[0] = '\0';
-
-  File root = SD_MMC.open(dir);
-  if (!root || !root.isDirectory()) {
-    return false;
-  }
-
-  uint16_t current = 0;
-  File file = root.openNextFile();
-  while (file) {
-    const char* name = file.name();
-    const size_t len = strlen(name);
-    if (!file.isDirectory() && len > 4 && strcmp(name + len - 4, ".bmp") == 0) {
-      if (current == index) {
-        char filePath[112] = {};
-        if (name[0] == '/') {
-          snprintf(filePath, sizeof(filePath), "%s", name);
-        } else {
-          snprintf(filePath, sizeof(filePath), "%s/%s", dir, name);
-        }
-        const size_t pathLen = strlen(filePath);
-        if (pathLen > 4) {
-          filePath[pathLen - 4] = '\0';
-        }
-        strncpy(out, filePath, outSize - 1);
-        out[outSize - 1] = '\0';
-        file.close();
-        root.close();
-        return true;
-      }
-      ++current;
-    }
-    file.close();
-    file = root.openNextFile();
-    yield();
-  }
-  root.close();
-  return false;
+  return sortedBaseAt(dir, ".bmp", index, out, outSize);
 }
 
 bool CaptureStorage::latestCaptureBase(const char* dir, char* out, size_t outSize) const {
@@ -536,6 +659,42 @@ bool CaptureStorage::latestCaptureBase(const char* dir, char* out, size_t outSiz
   return true;
 }
 
+uint16_t CaptureStorage::clipCount(const char* dir) const {
+  if (!mounted_ || dir == nullptr || dir[0] == '\0') {
+    return 0;
+  }
+  File root = SD_MMC.open(dir);
+  if (!root || !root.isDirectory()) {
+    return 0;
+  }
+  uint16_t count = 0;
+  File file = root.openNextFile();
+  while (file) {
+    const char* name = file.name();
+    const size_t len = strlen(name);
+    if (!file.isDirectory() && len > 6 && strcmp(name + len - 6, ".tclip") == 0) {
+      ++count;
+    }
+    file.close();
+    file = root.openNextFile();
+    yield();
+  }
+  root.close();
+  return count;
+}
+
+bool CaptureStorage::clipBaseAt(const char* dir, uint16_t index, char* out, size_t outSize) const {
+  if (!mounted_ || dir == nullptr || dir[0] == '\0' || out == nullptr || outSize == 0) {
+    return false;
+  }
+  return sortedBaseAt(dir, ".tclip", index, out, outSize);
+}
+
+bool CaptureStorage::latestClipBase(const char* dir, char* out, size_t outSize) const {
+  const uint16_t count = clipCount(dir);
+  return count > 0 && clipBaseAt(dir, count - 1, out, outSize);
+}
+
 bool CaptureStorage::deleteCapture(const char* basePath) {
   if (!mounted_ || basePath == nullptr || basePath[0] == '\0') {
     return false;
@@ -559,6 +718,153 @@ bool CaptureStorage::deleteCapture(const char* basePath) {
     return true;
   }
   return false;
+}
+
+bool CaptureStorage::deleteThermalClip(const char* basePath) {
+  if (!mounted_ || basePath == nullptr || basePath[0] == '\0') {
+    return false;
+  }
+  char clipPath[112];
+  snprintf(clipPath, sizeof(clipPath), "%s.tclip", basePath);
+  const bool ok = !SD_MMC.exists(clipPath) || SD_MMC.remove(clipPath);
+  Serial.printf("Delete thermal clip %s: %s\n", basePath, ok ? "ok" : "fail");
+  return ok;
+}
+
+bool CaptureStorage::loadThermalClipFrame(const char* basePath,
+                                          uint32_t frameIndex,
+                                          ThermalFrame& frame,
+                                          uint32_t* frameCount) const {
+  if (!mounted_ || basePath == nullptr || basePath[0] == '\0') {
+    return false;
+  }
+  char clipPath[112];
+  snprintf(clipPath, sizeof(clipPath), "%s.tclip", basePath);
+  File file = SD_MMC.open(clipPath, FILE_READ);
+  if (!file) {
+    return false;
+  }
+  uint8_t header[20] = {};
+  if (file.read(header, sizeof(header)) != sizeof(header) || memcmp(header, "FLIRTCLP", 8) != 0) {
+    file.close();
+    return false;
+  }
+  const uint16_t width = readLe16(header + 8);
+  const uint16_t height = readLe16(header + 10);
+  const uint32_t count = readLe32(header + 12);
+  if (frameCount != nullptr) {
+    *frameCount = count;
+  }
+  if (width != kLeptonWidth || height != kLeptonHeight || count == 0) {
+    file.close();
+    return false;
+  }
+  if (frameIndex >= count) {
+    frameIndex = count - 1;
+  }
+  const uint32_t offset = sizeof(header) + frameIndex * kLeptonPixelCount * sizeof(uint16_t);
+  if (!file.seek(offset)) {
+    file.close();
+    return false;
+  }
+  const size_t bytes = kLeptonPixelCount * sizeof(uint16_t);
+  const bool ok = file.read(reinterpret_cast<uint8_t*>(frame.raw), bytes) == bytes;
+  file.close();
+  if (ok) {
+    frame.width = kLeptonWidth;
+    frame.height = kLeptonHeight;
+    frame.frameNumber = frameIndex + 1;
+  }
+  return ok;
+}
+
+bool CaptureStorage::openThermalClipPlayback(const char* basePath, uint32_t* frameCount) {
+  if (!mounted_ || basePath == nullptr || basePath[0] == '\0') {
+    return false;
+  }
+
+  if (playbackClipFile_ && strcmp(playbackClipBasePath_, basePath) == 0) {
+    if (frameCount != nullptr) {
+      *frameCount = playbackClipFrameCount_;
+    }
+    return playbackClipFrameCount_ > 0;
+  }
+
+  closeThermalClipPlayback();
+
+  char clipPath[112];
+  snprintf(clipPath, sizeof(clipPath), "%s.tclip", basePath);
+  playbackClipFile_ = SD_MMC.open(clipPath, FILE_READ);
+  if (!playbackClipFile_) {
+    return false;
+  }
+
+  uint8_t header[20] = {};
+  if (playbackClipFile_.read(header, sizeof(header)) != sizeof(header) || memcmp(header, "FLIRTCLP", 8) != 0) {
+    closeThermalClipPlayback();
+    return false;
+  }
+
+  const uint16_t width = readLe16(header + 8);
+  const uint16_t height = readLe16(header + 10);
+  const uint32_t count = readLe32(header + 12);
+  if (width != kLeptonWidth || height != kLeptonHeight || count == 0) {
+    closeThermalClipPlayback();
+    return false;
+  }
+
+  strncpy(playbackClipBasePath_, basePath, sizeof(playbackClipBasePath_) - 1);
+  playbackClipBasePath_[sizeof(playbackClipBasePath_) - 1] = '\0';
+  playbackClipFrameCount_ = count;
+  playbackClipNextFrame_ = 0;
+  if (frameCount != nullptr) {
+    *frameCount = playbackClipFrameCount_;
+  }
+  return true;
+}
+
+bool CaptureStorage::readNextThermalClipPlaybackFrame(ThermalFrame& frame,
+                                                      uint32_t* frameIndex,
+                                                      uint32_t* frameCount) {
+  if (!playbackClipFile_ || playbackClipFrameCount_ == 0) {
+    return false;
+  }
+
+  if (playbackClipNextFrame_ >= playbackClipFrameCount_) {
+    playbackClipNextFrame_ = 0;
+  }
+
+  const uint32_t currentFrame = playbackClipNextFrame_;
+  const uint32_t offset = 20 + currentFrame * kLeptonPixelCount * sizeof(uint16_t);
+  if (!playbackClipFile_.seek(offset)) {
+    return false;
+  }
+
+  const size_t bytes = kLeptonPixelCount * sizeof(uint16_t);
+  if (playbackClipFile_.read(reinterpret_cast<uint8_t*>(frame.raw), bytes) != bytes) {
+    return false;
+  }
+
+  frame.width = kLeptonWidth;
+  frame.height = kLeptonHeight;
+  frame.frameNumber = currentFrame + 1;
+  playbackClipNextFrame_ = currentFrame + 1;
+  if (frameIndex != nullptr) {
+    *frameIndex = currentFrame;
+  }
+  if (frameCount != nullptr) {
+    *frameCount = playbackClipFrameCount_;
+  }
+  return true;
+}
+
+void CaptureStorage::closeThermalClipPlayback() {
+  if (playbackClipFile_) {
+    playbackClipFile_.close();
+  }
+  playbackClipFrameCount_ = 0;
+  playbackClipNextFrame_ = 0;
+  playbackClipBasePath_[0] = '\0';
 }
 
 bool CaptureStorage::loadCaptureBmp(const char* basePath,
@@ -714,6 +1020,7 @@ bool CaptureStorage::writeRaw(const char* path, const uint16_t* raw14, size_t pi
   }
   const size_t written = file.write(reinterpret_cast<const uint8_t*>(raw14), pixelCount * sizeof(uint16_t));
   yield();
+  file.flush();
   file.close();
   return written == pixelCount * sizeof(uint16_t);
 }
@@ -892,6 +1199,7 @@ bool CaptureStorage::writeBmp24(const char* path,
     }
   }
 
+  file.flush();
   file.close();
   return true;
 }

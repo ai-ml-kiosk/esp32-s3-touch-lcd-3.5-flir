@@ -26,4 +26,13 @@ static constexpr int FLIR_CCI_SCL = 18;
 static constexpr int FLIR_RESET = -1;
 static constexpr int FLIR_POWER_ENABLE = -1;
 
+// Waveshare onboard ES8311 codec + NS4150B speaker amplifier path.
+static constexpr int AUDIO_I2S_MCLK = 44;
+static constexpr int AUDIO_I2S_DOUT = 16;
+static constexpr int AUDIO_I2S_BCLK = 13;
+static constexpr int AUDIO_I2S_LRCK = 15;
+static constexpr int AUDIO_I2S_DIN = 14;
+static constexpr int AUDIO_I2C_SDA = 8;
+static constexpr int AUDIO_I2C_SCL = 7;
+
 }  // namespace Pins

@@ -109,10 +109,10 @@ class TouchDriver {
 };
 ```
 
-The UI layer owns mapping touch coordinates to controls such as `PAL`, `FFC`,
-`CAP`, capture review/delete, `SETUP`, icon-only zoom, hot/cold annotation, and
-center annotation. The orientation label is an indicator only; orientation
-changes come from QMI8658 auto-rotation.
+The UI layer owns mapping touch coordinates to controls such as `PAL`, image
+quality, `CAP`, capture review/delete, `SETUP`, hot/cold annotation, center
+annotation, custom marker placement, and pinch zoom. The orientation glyph is an
+indicator only; orientation changes come from QMI8658 auto-rotation.
 
 ## IMU Auto-Rotation Direction
 

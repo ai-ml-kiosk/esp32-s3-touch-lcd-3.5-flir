@@ -103,6 +103,20 @@ Actions performed:
 - Disabled automatic Lepton idle sleep until CCI wake plus VoSPI recovery is
   reliable on this hardware.
 - Kept manual Serial `sleep` and `wake` commands for backend-only testing.
+- Added a PMIC-first software power switch path using the bottom-right power
+  icon and Serial `poweroff`: Lepton low-power is requested, then the firmware
+  verifies AXP2101 at I2C `0x34` and writes the PMIC shutdown bit. If that fails,
+  it falls back to blanking the LCD, turning off the backlight, and suppressing
+  frame rendering until touch or Serial `wake` restores the app.
+- Treat the software power icon like a shutdown control, not a sleep button.
+  The firmware now shows a centered shutdown overlay, finishes any active clip
+  write, closes playback files, flushes raw/BMP capture files, and waits through
+  a 5-second visible countdown before requesting Lepton low-power and PMIC
+  shutdown. Avoid intentionally pressing it during heavy TF-card activity when
+  possible, but the normal power-button path is designed to complete
+  firmware-owned writes before power is cut. After a confirmed PMIC shutdown,
+  wake requires physical `PWR`, charger insertion, or power reconnect; touch
+  wake applies only to the fallback soft-off state.
 - Added cooperative `yield()` calls in BMP save, BMP load, raw save, and capture
   directory loops.
 - Released review thumbnail buffers when closing review.
@@ -149,6 +163,22 @@ Current behavior:
 - `Show Filename` controls whether the filename is written into the BMP footer.
 - Runtime hot/cold and center status-bar icons control BMP annotation overlays
   and temperature footer content at the moment `CAP` is pressed.
+- Review-page image and clip navigation must use sorted base filenames rather
+  than TF-card directory order; otherwise Prev/Next can appear mixed after
+  deletions or many captures.
+- Thermal clip files store raw Lepton frames for low-resource recording. Review
+  playback redraws high/low, center, and custom marker overlays after decoding
+  each frame rather than storing rendered overlays in the clip file.
+- Clip recording latches the saved setup `Clip` duration when recording starts.
+  Review image mode hides play/pause controls; review clip mode keeps the
+  progress bar separate from the saved filename line.
+- The recording timeout must compare against a fresh frame-time value, not a
+  stale loop timestamp captured before recording started; otherwise unsigned
+  time subtraction can save the clip immediately.
+- Clip review rewinds and reloads the first frame when play is pressed after
+  the clip reached the end.
+- Review header shows the configured working directory and TF-card
+  used/total/free capacity from `SD_MMC.usedBytes()` and `SD_MMC.totalBytes()`.
 
 ## Developer Notes
 
@@ -158,10 +188,16 @@ Current behavior:
 - Runtime diagrams and firmware use icon buttons for bottom actions.
 - Status bar includes:
   - orientation indicator only,
-  - icon-only zoom toggle,
+  - `Z1X` / `Z2X` pinch-zoom state,
   - hot/cold annotation toggle,
   - center annotation toggle,
+  - custom marker clear icon,
   - live/storage status text.
+- The bottom action row includes Palette, image quality, Capture, Review, and
+  Setup. Runtime manual FFC was removed after the CCI run-FFC path repeatedly
+  froze the live UI; use setup Auto FFC instead.
+- Image quality modes are `DETAIL`, `BAL`, and `SMOOTH`; use `SMOOTH` if the
+  display is noisy, and `DETAIL` if motion feels too soft.
 - Palette scale temperatures and readouts must remain independent from
   annotation toggles.
 

@@ -33,4 +33,10 @@ enum class PaletteMode {
   WhiteHot,
   BlackHot,
   Histogram,
+  Lava,
+  HotIron,
+  Medical,
+  Arctic,
+  Rainbow,
+  RedHot,
 };

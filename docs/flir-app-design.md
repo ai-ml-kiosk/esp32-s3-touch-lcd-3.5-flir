@@ -17,22 +17,31 @@ thermal UI, and saves annotated captures to the onboard TF card.
 
 The first complete app screen should prioritize a live thermal viewport with
 only the controls and readouts needed during use: frame status, hot/cold markers,
-center temperature, palette/range state, manual FFC, QMI8658-driven
-auto-rotation, zoom, capture to TF card, and `SETUP` configuration.
+center temperature, palette/range state, QMI8658-driven auto-rotation, two-finger
+pinch zoom, capture to TF card, and `SETUP` configuration.
 
 Landscape is the default orientation for this hardware. The Type B board has an
 onboard QMI8658 6-axis IMU on the internal I2C bus. The firmware reads the raw
 accelerometer gravity vector and auto-rotates between landscape and portrait
 after a sustained 500 ms physical orientation change. The status bar should
 place the active orientation icon at the left edge of the screen, followed by a
-zoom toggle, a hot/cold annotation toggle, and a center annotation toggle. The
-orientation icon uses a wide display glyph in landscape and a tall display glyph
-in portrait, but it is not a touch button. The zoom toggle is icon-only and has
-no visible button background; zoom mode renders a center crop of the Lepton
-frame and remaps hot/cold marker positions to the visible crop. The hot/cold
+hot/cold annotation toggle and a center annotation toggle. The orientation icon
+uses a wide display glyph in landscape and a tall display glyph in portrait, but
+it is not a touch button. Zoom is controlled by two-finger pinch gestures rather
+than a status-bar icon. Pinch-out enables the center crop zoom view; pinch-in
+returns to the full Lepton frame. The status bar shows `Z1X` for full frame and
+`Z2X` for zoomed frame. The current implementation supports one digital zoom
+level: 2x linear zoom, implemented by cropping the Lepton frame to half width
+and half height before scaling it back to the viewport. Zoom mode remaps
+hot/cold marker positions to the visible crop. The hot/cold
 toggle controls only the square hot/cold markers and their labels on the live
 thermal viewport and captured BMP. The center toggle controls only the center
 plus marker and center temperature label on the live viewport and captured BMP.
+Tapping inside the live FLIR viewport places a custom spot-temperature marker
+at that position. Up to three custom markers are shown at once as `M1`, `M2`,
+and `M3`; adding a fourth marker removes the oldest marker first. The status
+bar includes a marker-clear icon that removes all custom spot markers without
+affecting the hot/cold or center annotation toggles.
 Palette-scale temperatures and the readout panel are always shown and are not
 affected by these annotation toggles. The selected orientation should be saved
 with other viewer settings so the device boots back into the user's last chosen
@@ -49,22 +58,52 @@ For this board, RGB565 is the first implementation target unless the selected
 AXS15231B QSPI driver explicitly supports RGB666/262K frame pushes. See
 [Display Driver Design](display-driver-design.md).
 
-The `FFC` button triggers FLIR flat-field correction. FFC lets the Lepton
-recalibrate its sensor offset against a uniform reference, usually the module's
-internal shutter, which reduces fixed-pattern noise, image banding, and thermal
-drift after warm-up or ambient temperature changes.
+Flat-field correction lets the Lepton recalibrate its sensor offset against a
+uniform reference, usually the module's internal shutter, which reduces
+fixed-pattern noise, image banding, and thermal drift after warm-up or ambient
+temperature changes. For runtime stability, this firmware relies on Lepton Auto
+FFC from setup and does not issue the manual run-FFC CCI command from the live
+screen; that command path can block the current board/CCI/VoSPI combination.
 
 The `PAL` button cycles thermal visualization styles: Ironbow, White Hot, Black
-Hot, and Histogram. Histogram mode should use the frame distribution to improve
-contrast when the scene has a narrow temperature range.
+Hot, Histogram, Lava, Hot Iron, Medical, Arctic, Rainbow, and Red Hot.
+Histogram mode should use the frame distribution to improve contrast when the
+scene has a narrow temperature range.
+
+The image-quality button sits next to `PAL` and cycles `DETAIL`, `BAL`, and
+`SMOOTH`.
+
+| Mode | Runtime behavior | Best use |
+| --- | --- | --- |
+| `DETAIL` | Lowest filtering. It keeps the fastest/sharpest rendering path with percentile palette range stabilization and minimal temporal blending. | Moving the device, inspecting edges, or when latency matters more than noise. |
+| `BAL` | Balanced filtering. It applies moderate temporal smoothing, outlier replacement, and stable palette range handling. | Normal handheld use and the default mode for readable live viewing. |
+| `SMOOTH` | Strongest filtering. It increases temporal smoothing and adds a 3x3 median pass when the scene is still enough. | Stationary scenes, noisy images, or when stable temperature blobs matter more than edge crispness. |
+
+All modes upscale from the 80x60 Lepton source for the 480x320 LCD. `DETAIL`
+prefers responsiveness; `SMOOTH` prefers visual stability; `BAL` is the middle
+ground.
 
 The `SETUP` button opens an on-device ESP32 setup screen or overlay. See
 [ESP32 Setup Button Design](esp32-setup-button-design.md) for the embedded C++
 settings, validation, persistence, and capture-path contract.
 The main runtime controls should use compact functional icons instead of text:
-palette swatches for `PAL`, shutter bars for `FFC`, a camera outline for `CAP`,
-a playback/review icon for the latest capture, and a gear-like settings mark
-for `SETUP`. The capture-review control opens a small modal-style review panel
+palette swatches for `PAL`, image-quality bars, a camera outline for `CAP`, a
+video-camera outline for thermal clip capture, a playback/review icon for the
+latest capture, and a gear-like settings mark for `SETUP`. The software power
+icon sits at the far right of the bottom control row. It is a PMIC power-off
+control: firmware stops active clip work, requests Lepton CCI low-power, then
+writes the AXP2101 PMIC shutdown bit over the board I2C bus. If the AXP2101 is
+not detected at `0x34`, firmware falls back to the older soft-off behavior by
+blanking the LCD, turning off the backlight, and suppressing frame rendering.
+After a successful PMIC shutdown, the ESP32 is no longer running and wake
+requires the physical `PWR` button, charger insertion, or power reconnect. When
+the power icon is pressed, firmware shows a centered shutdown overlay, finishes
+any active TF-card clip write, closes playback files, flushes capture files, and
+then waits through a 5-second visible countdown before proceeding to Lepton
+low-power and PMIC shutdown.
+The video clip icon records a short `.tclip` file containing sequential raw
+Lepton frames on the TF card. The capture-review control opens a small
+modal-style review panel
 showing the latest saved capture path with `Delete` and `Close` actions. Delete
 removes the saved BMP and matching optional raw file pair.
 
@@ -72,14 +111,17 @@ removes the saved BMP and matching optional raw file pair.
 
 The setup screen includes an `Idle` field for touch-based inactivity sleep. The
 field is expressed in seconds and cycles through `Off`, `30`, `60`, `120`,
-`300`, and `600` seconds. When enabled, firmware sleeps the Lepton through the
-backend CCI power-management path after the timeout expires. A first touch while
-asleep wakes the Lepton and is consumed by the wake action.
-Automatic idle sleep also turns off the LCD backlight after writing the bottom
-status message. Touch wake and Serial `wake` turn the backlight on before
-recovering the Lepton. Manual Serial `sleep` leaves the screen on for
-diagnostics.
-The setup screen also includes a `Cal` temperature offset field. It cycles in
+`300`, and `600` seconds using a `[-] value [+]` stepper. The left zone
+decreases, the center value zone is non-actionable, and the right zone
+increases. Automatic idle sleep remains disabled in firmware until long-run CCI
+wake and VoSPI recovery are proven stable on this hardware.
+The user-facing low-power path is the bottom-right software power icon, which
+tries AXP2101 PMIC shutdown first and falls back to soft-off only if PMIC
+shutdown cannot be confirmed. Manual Serial `sleep` leaves the screen on for
+diagnostics; Serial `poweroff` uses the same PMIC-first shutdown path.
+The setup screen also includes a `Cal` temperature offset field. It uses the
+same `[-] value [+]` stepper: the left zone decreases the offset, the center
+value is a separator, and the right zone increases it. The setting moves in
 `0.5C` steps from `-5.0C` through `+5.0C`, persists in NVS, and is applied only
 to displayed temperature labels. Raw thermal data and saved `.raw` frames remain
 uncorrected.
@@ -96,12 +138,24 @@ also includes the saved BMP filename.
 The setup screen includes a `Raw` switch. Green/right means raw saving is
 enabled; gray/left means the capture button saves only the annotated BMP. The
 annotated BMP is always saved.
-The setup screen should remain scrollable as fields are added. The current
-firmware renders scroll affordances in portrait setup so future options can
-extend below the visible panel without covering Save/Cancel.
+The setup screen includes an `Auto FFC` switch. Green/right requests Lepton
+automatic FFC shutter mode over CCI; gray/left requests manual FFC shutter mode.
+There is no live-screen FFC button. Manual CCI run-FFC is disabled for stability
+on this board/CCI/VoSPI combination, so FFC behavior is configured only through
+the setup `Auto FFC` switch.
+The setup screen remains scrollable as fields are added. The current firmware
+renders a reserved scroll lane with widened up/down arrow hit areas in both
+landscape and portrait, so field rows can extend below the visible panel without
+covering Save/Cancel.
 Runtime feedback is shown on the last line of the screen. This bottom status
 line reports button actions, capture results, idle timeout sleep, and Lepton
 wake progress without covering the thermal viewport or the main controls.
+Touch audio feedback uses the onboard ES8311 codec and I2S speaker path. The
+setup screen includes a persisted `Volume` field with the same
+`[-] value [+]` stepper as calibration. Audio cues are generated procedurally in firmware:
+valid actions use a short two-note glass-click chime, invalid touches use a
+lower descending alert chime, and scroll gestures use a subtle high tick. The
+firmware does not depend on WAV files or TF-card audio assets.
 
 When `CAP` is pressed, capture storage must use the active save path from the
 runtime configuration last saved through `SETUP`. The capture module should read
@@ -404,7 +458,9 @@ driver.
 - `pixelCount`: number of pixels.
 - `colorOut`: output color buffer for `pushImage`.
 - `palette`: `PaletteMode::Ironbow`, `PaletteMode::WhiteHot`,
-  `PaletteMode::BlackHot`, or `PaletteMode::Histogram`.
+  `PaletteMode::BlackHot`, `PaletteMode::Histogram`, `PaletteMode::Lava`,
+  `PaletteMode::HotIron`, `PaletteMode::Medical`, `PaletteMode::Arctic`,
+  `PaletteMode::Rainbow`, or `PaletteMode::RedHot`.
 
 ### `ImageProcessor::calculateSpotTemperatures`
 
@@ -465,8 +521,11 @@ written successfully or disabled by setup.
 
 The app receives debounced touch events from the built-in AXS15231B I2C
 `touch_driver`. The UI layer maps screen coordinates to icon buttons such as
-palette, FFC, capture, capture review/delete, setup, and zoom. Storage writes
-and display updates must remain outside interrupt context.
+palette, image quality, still capture, thermal clip capture, capture
+review/delete, setup, custom marker clear, and zoom gestures. Taps inside the
+FLIR viewport are interpreted as
+custom spot-marker placement when no modal review/setup screen is open.
+Storage writes and display updates must remain outside interrupt context.
 
 When tapped:
 
@@ -479,6 +538,34 @@ When tapped:
 4. The bottom status line shows the saved base filename.
 5. The review/delete icon opens the latest saved capture record and can delete
    the BMP and optional raw pair.
+
+## Thermal Clip Button Behavior
+
+The video-camera icon records a short raw thermal clip to the configured TF-card
+path. The first tap starts recording and writes a `.tclip` file with a compact
+header: magic `FLIRTCLP`, source width, source height, frame count, nominal
+frame interval, followed by raw 16-bit Lepton frames. Recording duration is
+latched from the saved setup `Clip` setting when recording starts; supported
+durations are `3`, `5`, `10`, `15`, and `20` seconds. Recording automatically
+stops when that latched duration expires, or sooner if the icon is tapped again.
+The clip stop timer uses the recording start timestamp and a fresh frame-time
+check, so the first captured frame cannot immediately satisfy the timeout. This is
+intentionally a thermal-data clip rather than MP4/AVI so the ESP32-S3 can write
+it reliably without video encoding overhead.
+
+The review page lists captures and clips by sorted base filename, so `Prev` and
+`Next` move through `thermal_YYYYmmddHHMMSS` and fallback `thermal_00001`
+sequences predictably instead of relying on TF-card directory iteration order.
+Still-image review shows the saved BMP, including annotations that were written
+at capture time, and it does not show the clip play/pause control. Clip review
+decodes raw `.tclip` frames. The review header shows the active working
+directory plus TF-card used/total/free capacity, places the saved filename below
+the review tabs, and uses a slightly shorter/lower clip preview so the progress
+bar and filename remain separate. It also overlays `elapsed / total` clip time at
+the bottom of the clip preview. It rewinds cleanly when play is pressed after reaching the end, and overlays the
+currently enabled high/low, center, and custom marker indicators during
+playback so the reviewed clip presents the same marker context as the live
+viewer.
 
 For a complete record of bring-up and debugging decisions made on this hardware,
 see [Troubleshooting Actions Log](troubleshooting-actions.md).

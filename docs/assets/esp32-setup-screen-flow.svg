@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1080" height="720" viewBox="0 0 1080 720" role="img" aria-labelledby="title desc">
   <title id="title">ESP32 on-device setup screen flow</title>
-  <desc id="desc">Diagram showing the ESP32 FLIR viewer setup gear opening the on-device setup overlay with path, idle sleep, calibration, auto-rotation, manual orientation, show filename toggle, raw capture toggle, save, and cancel. Capture later writes to the configured TF-card path.</desc>
+  <desc id="desc">Diagram showing the ESP32 FLIR viewer setup gear opening the on-device setup overlay with path, idle sleep, calibration, sound volume, auto-rotation, manual orientation, show filename toggle, raw capture toggle, Auto FFC, clip duration, reserved scroll lane, save, and cancel. Capture later writes to the configured TF-card path.</desc>
   <defs>
     <style>
       .bg { fill: #f8fafc; }
@@ -15,6 +15,7 @@
       .toggleOn { fill: #22c55e; stroke: #166534; stroke-width: 2; }
       .toggleOff { fill: #64748b; stroke: #334155; stroke-width: 2; }
       .knob { fill: #f8fafc; stroke: #cbd5e1; stroke-width: 1.5; }
+      .step { font: 700 13px Arial, sans-serif; fill: #0f172a; }
       .title { font: 700 32px Arial, sans-serif; fill: #334155; }
       .label { font: 700 16px Arial, sans-serif; fill: #0f172a; }
       .text { font: 15px Arial, sans-serif; fill: #334155; }
@@ -76,9 +77,13 @@
 
   <path class="line" d="M414 380 C552 380 540 126 626 126"/>
 
-  <rect class="setup" x="626" y="96" width="386" height="392" rx="14"/>
+  <rect class="setup" x="626" y="96" width="386" height="438" rx="14"/>
   <text class="label" x="650" y="130">On-device Setup Overlay</text>
   <text class="muted" x="650" y="154">Thermal controls paused; Save/Cancel stay fixed</text>
+  <rect x="982" y="176" width="12" height="250" rx="6" fill="#e2e8f0" stroke="#cbd5e1"/>
+  <path d="M988 184 l-4 6 h8 z" fill="#334155"/>
+  <rect x="986" y="210" width="4" height="138" rx="2" fill="#94a3b8"/>
+  <path d="M988 416 l-4 -6 h8 z" fill="#334155"/>
 
   <text class="text" x="650" y="198">Path</text>
   <rect class="field" x="706" y="178" width="126" height="30" rx="5"/>
@@ -90,34 +95,56 @@
 
   <text class="text" x="650" y="244">Idle</text>
   <rect class="field" x="706" y="224" width="126" height="30" rx="5"/>
-  <text class="small" x="720" y="244">Off</text>
+  <text class="step" x="719" y="244">-</text>
+  <text class="small" x="769" y="244" text-anchor="middle">Off</text>
+  <text class="step" x="816" y="244">+</text>
   <text class="text" x="850" y="244">Orient</text>
   <rect class="field" x="906" y="224" width="70" height="30" rx="5"/>
   <text class="small" x="922" y="244">Auto</text>
 
   <text class="text" x="650" y="290">Cal</text>
   <rect class="field" x="706" y="270" width="126" height="30" rx="5"/>
-  <text class="small" x="720" y="290">+0.0C</text>
-  <text class="text" x="850" y="290">Show Name</text>
+  <text class="step" x="719" y="290">-</text>
+  <text class="small" x="769" y="290" text-anchor="middle">+0.0C</text>
+  <text class="step" x="816" y="290">+</text>
+  <text class="text" x="850" y="282">Show</text>
+  <text class="text" x="850" y="298">Name</text>
   <rect class="toggleOn" x="936" y="270" width="40" height="30" rx="15"/>
   <circle class="knob" cx="962" cy="285" r="10"/>
 
+  <text class="text" x="650" y="336">Volume</text>
+  <rect class="field" x="706" y="316" width="126" height="30" rx="5"/>
+  <text class="step" x="719" y="336">-</text>
+  <text class="small" x="769" y="336" text-anchor="middle">80%</text>
+  <text class="step" x="816" y="336">+</text>
   <text class="text" x="850" y="336">Raw</text>
   <rect class="toggleOn" x="906" y="316" width="70" height="30" rx="15"/>
   <circle class="knob" cx="960" cy="331" r="11"/>
   <text class="white" x="922" y="336">ON</text>
 
-  <rect class="field" x="650" y="382" width="118" height="32" rx="6"/>
-  <text class="text" x="709" y="403" text-anchor="middle">Cancel</text>
-  <rect class="primary" x="858" y="382" width="118" height="32" rx="6"/>
-  <text class="white" x="917" y="403" text-anchor="middle">Save</text>
+  <text class="text" x="650" y="382">Auto</text>
+  <text class="text" x="650" y="398">FFC</text>
+  <rect class="toggleOn" x="706" y="362" width="70" height="30" rx="15"/>
+  <circle class="knob" cx="760" cy="377" r="11"/>
+  <text class="white" x="722" y="382">ON</text>
+  <text class="text" x="850" y="382">Clip</text>
+  <rect class="field" x="906" y="362" width="70" height="30" rx="5"/>
+  <text class="step" x="916" y="382">-</text>
+  <text class="small" x="941" y="382" text-anchor="middle">3s</text>
+  <text class="step" x="962" y="382">+</text>
 
-  <text class="muted" x="650" y="442">
+  <rect class="field" x="650" y="446" width="118" height="32" rx="6"/>
+  <line x1="692" y1="458" x2="726" y2="484" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+  <line x1="726" y1="458" x2="692" y2="484" stroke="#334155" stroke-width="4" stroke-linecap="round"/>
+  <rect class="primary" x="858" y="446" width="118" height="32" rx="6"/>
+  <path d="M894 462 l14 14 l28 -28" fill="none" stroke="#f8fafc" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <text class="muted" x="650" y="506">
     <tspan x="650" dy="0">Save validates path, persists NVS settings,</tspan>
     <tspan x="650" dy="20">and reapplies display/touch orientation.</tspan>
   </text>
 
-  <path class="lineBlue" d="M906 398 C760 566 432 532 260 394"/>
+  <path class="lineBlue" d="M917 462 C760 566 432 532 260 394"/>
   <text class="label" x="120" y="524">Capture contract</text>
   <text class="text" x="120" y="552">
     <tspan x="120" dy="0">CAP reads Settings.savePath at press time.</tspan>

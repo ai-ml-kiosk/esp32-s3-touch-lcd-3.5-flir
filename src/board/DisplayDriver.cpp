@@ -23,10 +23,15 @@ void flushDisplay() {
   }
 }
 
+uint8_t panelRotationFromAppRotation(uint8_t rotation) {
+  return (rotation + 2) & 0x03;
+}
+
 }  // namespace
 
 bool DisplayDriver::begin(bool landscape) {
   landscape_ = landscape;
+  rotation_ = landscape ? 1 : 0;
   pinMode(BoardPins::LCD_BACKLIGHT, OUTPUT);
   setBacklight(true);
 
@@ -52,10 +57,16 @@ void DisplayDriver::setBacklight(bool enabled) {
 }
 
 void DisplayDriver::setLandscape(bool landscape) {
-  if (landscape_ == landscape && ready_) {
+  setRotation(landscape ? 1 : 0);
+}
+
+void DisplayDriver::setRotation(uint8_t rotation) {
+  rotation &= 0x03;
+  if (rotation_ == rotation && ready_) {
     return;
   }
-  landscape_ = landscape;
+  rotation_ = rotation;
+  landscape_ = (rotation_ == 1 || rotation_ == 3);
   applyOrientation();
   fillScreen(rgb565(0, 0, 0));
 }
@@ -179,7 +190,7 @@ bool DisplayDriver::initializePanel() {
                              panel,
                              0,
                              0,
-                             landscape_ ? 1 : 0);
+                             rotation_);
   }
 
   if (!gfx->begin()) {
@@ -193,6 +204,6 @@ bool DisplayDriver::initializePanel() {
 
 void DisplayDriver::applyOrientation() {
   if (ready_) {
-    gfx->setRotation(landscape_ ? 1 : 0);
+    gfx->setRotation(panelRotationFromAppRotation(rotation_));
   }
 }

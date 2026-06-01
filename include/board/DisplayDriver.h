@@ -17,6 +17,7 @@ class DisplayDriver {
  public:
   bool begin(bool landscape);
   void setLandscape(bool landscape);
+  void setRotation(uint8_t rotation);
   bool isReady() const { return ready_; }
   bool isLandscape() const { return landscape_; }
   DisplayInfo info() const;
@@ -41,5 +42,6 @@ class DisplayDriver {
 
   bool ready_ = false;
   bool landscape_ = true;
+  uint8_t rotation_ = 1;
   bool backlightEnabled_ = false;
 };
