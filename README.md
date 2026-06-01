@@ -24,6 +24,30 @@ pio run
 pio run --target upload
 ```
 
+## Release Firmware Binaries
+
+Tagged releases publish downloadable firmware assets through GitHub Actions.
+Create and push a version tag to build and attach both the app image and the
+factory image to a GitHub Release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Release assets:
+
+- `waveshare-esp32-s3-touch-lcd-35b-flir-firmware.bin`: application firmware.
+- `waveshare-esp32-s3-touch-lcd-35b-flir-firmware.factory.bin`: combined image
+  for full restore from offset `0x0`.
+- `README-flash.md`: flashing commands for the release assets.
+
+To build the same artifacts locally:
+
+```bash
+bash scripts/build_release.sh
+```
+
 ## Monitor
 
 ```bash
