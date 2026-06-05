@@ -86,6 +86,38 @@ uint16_t orientationWidth(bool landscape) {
   return 34;
 }
 
+const char* powerSourceName(PowerSource source) {
+  switch (source) {
+    case PowerSource::External:
+      return "External";
+    case PowerSource::Battery:
+      return "Battery";
+    case PowerSource::Unknown:
+    default:
+      return "Unknown";
+  }
+}
+
+const char* chargeStateName(BatteryChargeState state) {
+  switch (state) {
+    case BatteryChargeState::Trickle:
+      return "Trickle";
+    case BatteryChargeState::Precharge:
+      return "Precharge";
+    case BatteryChargeState::ConstantCurrent:
+      return "Charging CC";
+    case BatteryChargeState::ConstantVoltage:
+      return "Charging CV";
+    case BatteryChargeState::Done:
+      return "Charge done";
+    case BatteryChargeState::NotCharging:
+      return "Not charging";
+    case BatteryChargeState::Unknown:
+    default:
+      return "Unknown";
+  }
+}
+
 void formatTemp(char* out, size_t outSize, float temp) {
   snprintf(out, outSize, "%.1fC", temp);
 }
@@ -445,9 +477,10 @@ void ThermalUi::render(DisplayDriver& display,
                        const AppSettings& settings,
                        CaptureStorage& storage,
                        bool storageReady,
+                       const BatteryStatus& battery,
                        const char* lastCaptureBasePath) {
   if (frame.frameNumber == 0) {
-    renderWaiting(display, settings, storageReady);
+    renderWaiting(display, settings, storageReady, battery);
     return;
   }
 
@@ -474,7 +507,7 @@ void ThermalUi::render(DisplayDriver& display,
   drawSoundIcon(display, soundX + 12, 21, settings.soundEnabled);
 
   const int16_t zoomTextX = soundX + 36;
-  display.drawText(zoomTextX, 14, zoomed_ ? "Z2X" : "Z1X", zoomed_ ? kText : kMuted, 1);
+  display.drawText(zoomTextX, 14, zoomed_ ? "2X" : "FULL", zoomed_ ? kText : kMuted, 1);
 
   const int16_t liveX = zoomTextX + 34;
   display.drawText(liveX, 14, "LIVE", kText, 1);
@@ -482,9 +515,16 @@ void ThermalUi::render(DisplayDriver& display,
   if (settings.landscape) {
     display.drawText(liveX + 58, 14, "8.6 fps", kMuted, 1);
   }
-  const int16_t storageTextRight = static_cast<int16_t>(info.width - 8);
-  const uint16_t storageBgW = settings.landscape ? 74 : 54;
-  display.fillRect(info.width > storageBgW ? info.width - storageBgW : 0, 2, storageBgW, statusH - 4, kPanel);
+  const uint16_t batteryW = 42;
+  const int16_t batteryX = static_cast<int16_t>(info.width - batteryW - 4);
+  drawBatteryIcon(display, batteryX, 8, battery);
+
+  const int16_t storageTextRight = static_cast<int16_t>(batteryX - 6);
+  const uint16_t storageBgW = settings.landscape ? 126 : 104;
+  const int16_t storageBgX = storageTextRight > static_cast<int16_t>(storageBgW)
+                                 ? static_cast<int16_t>(storageTextRight - storageBgW)
+                                 : 0;
+  display.fillRect(storageBgX, 2, storageBgW, statusH - 4, kPanel);
   display.drawTextRight(storageTextRight, settings.landscape ? 10 : 8, storageReady ? "TF OK" : "NO TF", storageReady ? kMuted : kError, 1);
   if (storageReady) {
     char freeText[16] = {};
@@ -630,6 +670,12 @@ void ThermalUi::render(DisplayDriver& display,
   if (setupActive_) {
     renderSetup(display, setupDraftSettings_);
   }
+  if (batterySummaryActive_) {
+    renderBatterySummary(display, settings, battery);
+  }
+  if (powerConfirmActive_) {
+    renderPowerConfirm(display, settings);
+  }
 }
 
 bool ThermalUi::handleTouch(const TouchPoint& touch,
@@ -648,7 +694,8 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
   }
 
   if (touch.pressed && touch.touchCount >= 2) {
-    return handlePinchZoom(settings, touch);
+    pinchActive_ = false;
+    return false;
   }
   if (pinchActive_) {
     pinchActive_ = false;
@@ -659,6 +706,8 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
     setupDragActive_ = false;
     setupDragMoved_ = false;
     setupControlHeld_ = false;
+    mainControlHeld_ = false;
+    mainHeldAction_ = Action::None;
     setupPendingAction_ = Action::None;
     return false;
   }
@@ -673,6 +722,18 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
   lastTouchMs_ = now;
 
   const Action action = hitTest(touch.x, touch.y, settings.landscape);
+  if (powerConfirmActive_ &&
+      action != Action::SoftPowerCancel &&
+      action != Action::SoftPowerConfirm) {
+    pendingSoundEvent_ = SoundEvent::Alert;
+    return false;
+  }
+  if (batterySummaryActive_ && action != Action::Battery) {
+    batterySummaryActive_ = false;
+    pendingSoundEvent_ = SoundEvent::Click;
+    showStatus("Battery summary closed");
+    return true;
+  }
   if (playbackActive_ && now < ignoreSetupTouchUntilMs_ &&
       (action == Action::PlaybackClose || action == Action::PlaybackDelete ||
        action == Action::PlaybackPrev || action == Action::PlaybackNext)) {
@@ -684,12 +745,26 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
        action == Action::SetupIdleDown ||
        action == Action::SetupTempOffset || action == Action::SetupTempOffsetDown ||
        action == Action::SetupAutoRotate ||
+       action == Action::SetupDefault ||
        action == Action::SetupOrientation || action == Action::SetupFilename ||
        action == Action::SetupRaw || action == Action::SetupAutoFfc ||
        action == Action::SetupClipDuration || action == Action::SetupClipDurationDown ||
        action == Action::SetupSoundVolume ||
        action == Action::SetupSoundVolumeDown)) {
     return false;
+  }
+
+  if (action != Action::None) {
+    if (mainControlHeld_ && mainHeldAction_ == action) {
+      return true;
+    }
+    if (lastMainAction_ == action && now - lastMainActionMs_ < 260) {
+      return true;
+    }
+    mainControlHeld_ = true;
+    mainHeldAction_ = action;
+    lastMainAction_ = action;
+    lastMainActionMs_ = now;
   }
 
   switch (action) {
@@ -741,6 +816,7 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       return true;
     case Action::Playback:
       pendingSoundEvent_ = SoundEvent::Click;
+      batterySummaryActive_ = false;
       storage.closeThermalClipPlayback();
       releasePlaybackClipFrame();
       playbackClipMode_ = false;
@@ -753,7 +829,7 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       }
       loadBrowserPreview(storage, viewportWidth, viewportHeight);
       playbackActive_ = true;
-      ignoreSetupTouchUntilMs_ = now + 600;
+      ignoreSetupTouchUntilMs_ = now + 180;
       showStatus(captureBrowserCount_ == 0 ? "No captures found" : "Capture browser");
       return true;
     case Action::PlaybackImageTab:
@@ -922,6 +998,7 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       return true;
     case Action::Setup:
       pendingSoundEvent_ = SoundEvent::Click;
+      batterySummaryActive_ = false;
       playbackActive_ = false;
       storage.closeThermalClipPlayback();
       releasePlaybackClipFrame();
@@ -931,7 +1008,10 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       setupDragActive_ = false;
       setupDragMoved_ = false;
       setupPendingAction_ = Action::None;
-      ignoreSetupTouchUntilMs_ = now + 300;
+      lastSetupAction_ = Action::Setup;
+      lastSetupActionMs_ = now;
+      setupWaitForRelease_ = true;
+      ignoreSetupTouchUntilMs_ = now + 450;
       showStatus("Setup opened");
       return true;
     case Action::HotColdDetails:
@@ -958,8 +1038,34 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       ignoreTouchUntilMs_ = now + 250;
       showStatus(settings.soundEnabled ? "Sound on" : "Sound off");
       return true;
+    case Action::Zoom:
+      zoomed_ = !zoomed_;
+      settings.zoomed = zoomed_;
+      pendingSoundEvent_ = SoundEvent::Click;
+      ignoreTouchUntilMs_ = now + 350;
+      showStatus(zoomed_ ? "Zoom 2x" : "Full view");
+      return true;
+    case Action::Battery:
+      batterySummaryActive_ = !batterySummaryActive_;
+      pendingSoundEvent_ = SoundEvent::Click;
+      ignoreTouchUntilMs_ = now + 250;
+      showStatus(batterySummaryActive_ ? "Battery summary" : "Battery closed");
+      return true;
     case Action::SoftPower:
       pendingSoundEvent_ = SoundEvent::Click;
+      powerConfirmActive_ = true;
+      ignoreTouchUntilMs_ = now + 350;
+      showStatus("Confirm shutdown");
+      return true;
+    case Action::SoftPowerCancel:
+      pendingSoundEvent_ = SoundEvent::Click;
+      powerConfirmActive_ = false;
+      ignoreTouchUntilMs_ = now + 250;
+      showStatus("Shutdown canceled");
+      return true;
+    case Action::SoftPowerConfirm:
+      pendingSoundEvent_ = SoundEvent::Click;
+      powerConfirmActive_ = false;
       softPowerRequest_ = true;
       ignoreTouchUntilMs_ = now + 600;
       showStatus("Powering down...");
@@ -982,6 +1088,12 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
       } else {
         showStatus("Invalid path");
       }
+      return true;
+    case Action::SetupDefault:
+      pendingSoundEvent_ = SoundEvent::Click;
+      setupDraftSettings_ = AppSettings{};
+      setupScrollY_ = 0;
+      showStatus("Defaults loaded");
       return true;
     case Action::SetupPath:
       pendingSoundEvent_ = SoundEvent::Click;
@@ -1123,18 +1235,33 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
   const uint16_t screenW = landscape ? 480 : 320;
   const uint16_t screenH = landscape ? 320 : 480;
 
+  if (powerConfirmActive_) {
+    const uint16_t panelW = landscape ? 300 : 260;
+    const uint16_t panelH = 138;
+    const int16_t panelX = static_cast<int16_t>((screenW - panelW) / 2);
+    const int16_t panelY = static_cast<int16_t>((screenH - panelH) / 2);
+    const int16_t buttonY = static_cast<int16_t>(panelY + panelH - 44);
+    if (contains({static_cast<int16_t>(panelX + 20), buttonY, 104, 34}, x, y)) {
+      return Action::SoftPowerCancel;
+    }
+    if (contains({static_cast<int16_t>(panelX + panelW - 124), buttonY, 104, 34}, x, y)) {
+      return Action::SoftPowerConfirm;
+    }
+    return Action::None;
+  }
+
   if (playbackActive_) {
     const uint16_t panelX = 0;
     const uint16_t panelW = screenW - (panelX * 2);
-    const uint16_t bottomY = screenH - 46;
-    if (contains({static_cast<int16_t>(panelX + 128), 4, 48, 36}, x, y)) return Action::PlaybackImageTab;
-    if (contains({static_cast<int16_t>(panelX + 182), 4, 48, 36}, x, y)) return Action::PlaybackClipTab;
-    if (contains({static_cast<int16_t>(panelX + 4), static_cast<int16_t>(bottomY), 62, 44}, x, y)) return Action::PlaybackPrev;
-    if (contains({static_cast<int16_t>(panelX + 62), static_cast<int16_t>(bottomY), 62, 44}, x, y)) return Action::PlaybackNext;
+    const uint16_t bottomY = screenH - 40;
+    if (contains({static_cast<int16_t>(panelX + 124), 4, 52, 40}, x, y)) return Action::PlaybackImageTab;
+    if (contains({static_cast<int16_t>(panelX + 178), 4, 52, 40}, x, y)) return Action::PlaybackClipTab;
+    if (contains({static_cast<int16_t>(panelX + 8), static_cast<int16_t>(bottomY), 56, 38}, x, y)) return Action::PlaybackPrev;
+    if (contains({static_cast<int16_t>(panelX + 64), static_cast<int16_t>(bottomY), 56, 38}, x, y)) return Action::PlaybackNext;
     if (playbackClipMode_ &&
-        contains({static_cast<int16_t>(panelX + panelW / 2 - 31), static_cast<int16_t>(bottomY), 62, 44}, x, y)) return Action::PlaybackPlayPause;
-    if (contains({static_cast<int16_t>(panelX + panelW - 126), static_cast<int16_t>(bottomY), 62, 44}, x, y)) return Action::PlaybackDelete;
-    if (contains({static_cast<int16_t>(panelX + panelW - 68), static_cast<int16_t>(bottomY), 62, 44}, x, y)) return Action::PlaybackClose;
+        contains({static_cast<int16_t>(panelX + panelW / 2 - 28), static_cast<int16_t>(bottomY), 56, 38}, x, y)) return Action::PlaybackPlayPause;
+    if (contains({static_cast<int16_t>(panelX + panelW - 120), static_cast<int16_t>(bottomY), 56, 38}, x, y)) return Action::PlaybackDelete;
+    if (contains({static_cast<int16_t>(panelX + panelW - 64), static_cast<int16_t>(bottomY), 56, 38}, x, y)) return Action::PlaybackClose;
     return Action::None;
   }
 
@@ -1147,6 +1274,7 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
     if (contains({static_cast<int16_t>(panelX), static_cast<int16_t>(panelY), panelW, panelH}, x, y)) {
       if (contains({static_cast<int16_t>(panelX + 12), static_cast<int16_t>(panelY + panelH - 42), 112, 36}, x, y)) return Action::SetupCancel;
       if (contains({static_cast<int16_t>(panelX + panelW - 124), static_cast<int16_t>(panelY + panelH - 42), 112, 36}, x, y)) return Action::SetupSave;
+      if (contains({static_cast<int16_t>(panelX + panelW - 54), static_cast<int16_t>(panelY + 6), 44, 38}, x, y)) return Action::SetupDefault;
       if (maxScroll > 0 && setupScrollY_ > 0 &&
           contains({static_cast<int16_t>(panelX + panelW - 38), static_cast<int16_t>(panelY + 38), 38, 38}, x, y)) {
         return Action::SetupScrollUp;
@@ -1227,20 +1355,27 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
   const uint16_t orientW = orientationWidth(landscape);
   const int16_t orientX = 8;
   const int16_t hotColdX = orientX + orientW + 8;
-  if (contains({static_cast<int16_t>(hotColdX - 4), 4, 32, 36}, x, y)) {
+  if (contains({static_cast<int16_t>(hotColdX - 8), 0, 40, 44}, x, y)) {
     return Action::HotColdDetails;
   }
   const int16_t centerX = hotColdX + 34;
-  if (contains({static_cast<int16_t>(centerX - 4), 4, 32, 36}, x, y)) {
+  if (contains({static_cast<int16_t>(centerX - 8), 0, 40, 44}, x, y)) {
     return Action::CenterTemperature;
   }
   const int16_t clearMarkersX = centerX + 34;
-  if (contains({static_cast<int16_t>(clearMarkersX - 4), 4, 32, 36}, x, y)) {
+  if (contains({static_cast<int16_t>(clearMarkersX - 8), 0, 40, 44}, x, y)) {
     return Action::ClearCustomMarkers;
   }
   const int16_t soundX = clearMarkersX + 34;
-  if (contains({static_cast<int16_t>(soundX - 4), 4, 32, 36}, x, y)) {
+  if (contains({static_cast<int16_t>(soundX - 8), 0, 40, 44}, x, y)) {
     return Action::Sound;
+  }
+  const int16_t zoomTextX = soundX + 36;
+  if (contains({static_cast<int16_t>(zoomTextX - 8), 0, 54, 44}, x, y)) {
+    return Action::Zoom;
+  }
+  if (contains({static_cast<int16_t>(screenW - 56), 0, 56, 44}, x, y)) {
+    return Action::Battery;
   }
 
   const uint16_t buttonY = screenH - (landscape ? 52 : 54);
@@ -1511,6 +1646,12 @@ bool ThermalUi::executeSetupAction(Action action,
         showStatus("Invalid path");
       }
       return true;
+    case Action::SetupDefault:
+      pendingSoundEvent_ = SoundEvent::Click;
+      setupDraftSettings_ = AppSettings{};
+      setupScrollY_ = 0;
+      showStatus("Defaults loaded");
+      return true;
     case Action::SetupPath:
       pendingSoundEvent_ = SoundEvent::Click;
       cyclePath(setupDraftSettings_);
@@ -1650,17 +1791,23 @@ bool ThermalUi::handleSetupTouch(const TouchPoint& touch,
   const uint32_t now = millis();
 
   if (!touch.pressed) {
-    const Action pending = setupPendingAction_;
-    const bool dragged = setupDragMoved_;
+    setupWaitForRelease_ = false;
     setupDragActive_ = false;
     setupDragMoved_ = false;
     setupControlHeld_ = false;
     setupPendingAction_ = Action::None;
-    if (!dragged && pending != Action::None && now >= ignoreSetupTouchUntilMs_) {
-      ignoreSetupTouchUntilMs_ = now + 80;
-      return executeSetupAction(pending, settings, storage);
-    }
     return false;
+  }
+
+  if (setupWaitForRelease_) {
+    if (now < ignoreSetupTouchUntilMs_) {
+      setupDragActive_ = false;
+      setupDragMoved_ = false;
+      setupControlHeld_ = false;
+      setupPendingAction_ = Action::None;
+      return true;
+    }
+    setupWaitForRelease_ = false;
   }
 
   if (now < ignoreSetupTouchUntilMs_) {
@@ -1668,11 +1815,38 @@ bool ThermalUi::handleSetupTouch(const TouchPoint& touch,
   }
 
   const Action immediateAction = hitTest(touch.x, touch.y, landscape);
-  if (immediateAction == Action::SetupScrollUp || immediateAction == Action::SetupScrollDown) {
+  const bool setupControlAction =
+      immediateAction == Action::SetupCancel ||
+      immediateAction == Action::SetupSave ||
+      immediateAction == Action::SetupDefault ||
+      immediateAction == Action::SetupPath ||
+      immediateAction == Action::SetupIdle ||
+      immediateAction == Action::SetupIdleDown ||
+      immediateAction == Action::SetupTempOffset ||
+      immediateAction == Action::SetupTempOffsetDown ||
+      immediateAction == Action::SetupAutoRotate ||
+      immediateAction == Action::SetupOrientation ||
+      immediateAction == Action::SetupFilename ||
+      immediateAction == Action::SetupRaw ||
+      immediateAction == Action::SetupAutoFfc ||
+      immediateAction == Action::SetupClipDuration ||
+      immediateAction == Action::SetupClipDurationDown ||
+      immediateAction == Action::SetupSoundVolume ||
+      immediateAction == Action::SetupSoundVolumeDown;
+  if (immediateAction == Action::SetupScrollUp || immediateAction == Action::SetupScrollDown || setupControlAction) {
+    if (setupControlHeld_ && setupPendingAction_ == immediateAction) {
+      return true;
+    }
+    if (lastSetupAction_ == immediateAction && now - lastSetupActionMs_ < 420) {
+      return true;
+    }
     setupDragActive_ = false;
     setupDragMoved_ = false;
-    setupPendingAction_ = Action::None;
-    ignoreSetupTouchUntilMs_ = now + 110;
+    setupControlHeld_ = true;
+    setupPendingAction_ = immediateAction;
+    lastSetupAction_ = immediateAction;
+    lastSetupActionMs_ = now;
+    ignoreSetupTouchUntilMs_ = now + 220;
     return executeSetupAction(immediateAction, settings, storage);
   }
 
@@ -2063,6 +2237,9 @@ void ThermalUi::renderSetup(DisplayDriver& display, const AppSettings& settings)
   display.fillRect(panelX, panelY, panelW, panelH, DisplayDriver::rgb565(245, 247, 250));
   display.drawRect(panelX, panelY, panelW, panelH, kPrimary);
   display.drawText(panelX + 14, panelY + 14, "SETUP", DisplayDriver::rgb565(15, 23, 42), 2);
+  drawIconButton(display,
+                 {static_cast<int16_t>(panelX + panelW - 48), static_cast<int16_t>(panelY + 8), 34, 28},
+                 Action::SetupDefault);
   if (maxScroll > 0) {
     const int16_t arrowX = static_cast<int16_t>(panelX + panelW - 28);
     display.fillRoundRect(arrowX - 4, panelY + 42, 28, 28, 6, DisplayDriver::rgb565(226, 232, 240));
@@ -2273,7 +2450,7 @@ void ThermalUi::renderPlayback(DisplayDriver& display, const AppSettings& settin
   drawIconButton(display, {static_cast<int16_t>(panelX + panelW - 58), static_cast<int16_t>(bottomY), 44, 28}, Action::PlaybackClose, true);
 }
 
-void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady) {
+void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady, const BatteryStatus& battery) {
   const DisplayInfo info = display.info();
   display.fillScreen(DisplayDriver::rgb565(15, 23, 42));
   display.fillRect(0, 0, info.width, 44, DisplayDriver::rgb565(250, 204, 21));
@@ -2294,11 +2471,12 @@ void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& setting
   drawSoundIcon(display, soundX + 12, 21, settings.soundEnabled);
 
   const int16_t zoomTextX = soundX + 36;
-  display.drawText(zoomTextX, 14, zoomed_ ? "Z2X" : "Z1X", DisplayDriver::rgb565(15, 23, 42), 1);
+  display.drawText(zoomTextX, 14, zoomed_ ? "2X" : "FULL", DisplayDriver::rgb565(15, 23, 42), 1);
 
   const int16_t waitX = zoomTextX + 34;
   display.drawText(waitX, 14, "WAIT", DisplayDriver::rgb565(15, 23, 42), 1);
-  display.drawTextRight(info.width - 10, 14, storageReady ? "TF OK" : "NO TF", DisplayDriver::rgb565(15, 23, 42), 1);
+  drawBatteryIcon(display, static_cast<int16_t>(info.width - 46), 8, battery);
+  display.drawTextRight(info.width - 54, 14, storageReady ? "TF OK" : "NO TF", DisplayDriver::rgb565(15, 23, 42), 1);
 
   const uint16_t panelX = settings.landscape ? 54 : 24;
   const uint16_t panelY = settings.landscape ? 76 : 120;
@@ -2317,6 +2495,9 @@ void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& setting
   display.fillRect(swatchW, colorY, swatchW, 32, DisplayDriver::rgb565(34, 197, 94));
   display.fillRect(swatchW * 2, colorY, swatchW, 32, DisplayDriver::rgb565(59, 130, 246));
   display.fillRect(swatchW * 3, colorY, info.width - (swatchW * 3), 32, DisplayDriver::rgb565(255, 255, 255));
+  if (batterySummaryActive_) {
+    renderBatterySummary(display, settings, battery);
+  }
 }
 
 void ThermalUi::drawButton(DisplayDriver& display, const Rect& rect, const char* label, bool primary) {
@@ -2472,6 +2653,14 @@ void ThermalUi::drawActionIcon(DisplayDriver& display, int16_t cx, int16_t cy, A
       display.fillRect(cx + 5, cy - 2, 3, 3, color);
       display.fillRect(cx + 8, cy - 5, 3, 3, color);
       break;
+    case Action::SetupDefault:
+      display.drawRect(cx - 8, cy - 8, 16, 16, color);
+      display.fillRect(cx - 4, cy - 11, 8, 3, color);
+      display.fillRect(cx - 11, cy - 4, 3, 8, color);
+      display.fillRect(cx + 8, cy - 4, 3, 8, color);
+      display.fillRect(cx - 4, cy + 8, 8, 3, color);
+      display.fillRect(cx - 2, cy - 2, 4, 4, color);
+      break;
     case Action::Setup:
       display.drawRect(cx - 5, cy - 5, 10, 10, color);
       display.fillRect(cx - 2, cy - 11, 4, 5, color);
@@ -2546,6 +2735,94 @@ void ThermalUi::drawSoundIcon(DisplayDriver& display, int16_t cx, int16_t cy, bo
     display.fillRect(cx + 6, cy + 2, 3, 3, kError);
     display.fillRect(cx + 3, cy + 5, 3, 3, kError);
   }
+}
+
+void ThermalUi::drawBatteryIcon(DisplayDriver& display, int16_t x, int16_t y, const BatteryStatus& battery) {
+  const uint16_t outline = battery.pmicPresent ? kText : DisplayDriver::rgb565(100, 116, 139);
+  const uint16_t fill = battery.externalPowerGood
+                            ? DisplayDriver::rgb565(34, 197, 94)
+                            : (battery.batteryPresent ? DisplayDriver::rgb565(250, 204, 21) : DisplayDriver::rgb565(100, 116, 139));
+  display.drawRect(x, y + 4, 30, 16, outline);
+  display.fillRect(x + 30, y + 9, 3, 6, outline);
+  if (battery.percentage >= 0) {
+    const uint8_t pct = battery.percentage > 100 ? 100 : static_cast<uint8_t>(battery.percentage);
+    const uint16_t fillW = static_cast<uint16_t>(pct) * 26 / 100;
+    if (fillW > 0) {
+      display.fillRect(x + 2, y + 6, fillW, 12, fill);
+    }
+    char pctText[8] = {};
+    snprintf(pctText, sizeof(pctText), "%d", static_cast<int>(pct));
+    display.drawText(x + 5, y + 8, pctText, kBg, 1);
+  } else {
+    display.drawText(x + 8, y + 8, "--", outline, 1);
+  }
+  if (battery.externalPowerGood) {
+    display.fillRect(x + 35, y + 4, 2, 8, DisplayDriver::rgb565(34, 197, 94));
+    display.fillRect(x + 33, y + 10, 5, 2, DisplayDriver::rgb565(34, 197, 94));
+    display.fillRect(x + 34, y + 12, 2, 8, DisplayDriver::rgb565(34, 197, 94));
+  }
+}
+
+void ThermalUi::renderBatterySummary(DisplayDriver& display, const AppSettings& settings, const BatteryStatus& battery) {
+  const DisplayInfo info = display.info();
+  const uint16_t panelW = settings.landscape ? 270 : 250;
+  const uint16_t panelH = settings.landscape ? 170 : 188;
+  const int16_t panelX = static_cast<int16_t>((info.width - panelW) / 2);
+  const int16_t panelY = static_cast<int16_t>((info.height - panelH) / 2);
+  display.fillRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(15, 23, 42));
+  display.drawRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(14, 165, 233));
+  display.drawText(panelX + 16, panelY + 14, "Battery", kText, 2);
+  drawBatteryIcon(display, static_cast<int16_t>(panelX + panelW - 54), static_cast<int16_t>(panelY + 12), battery);
+
+  char line[48] = {};
+  int16_t y = panelY + 46;
+  snprintf(line, sizeof(line), "PMIC: %s", battery.pmicPresent ? "AXP2101 OK" : "not detected");
+  display.drawText(panelX + 16, y, line, battery.pmicPresent ? kText : kError, 1);
+  y += 18;
+  snprintf(line, sizeof(line), "Source: %s", powerSourceName(battery.source));
+  display.drawText(panelX + 16, y, line, kText, 1);
+  y += 18;
+  if (battery.percentage >= 0) {
+    snprintf(line, sizeof(line), "Battery: present, %d%%", static_cast<int>(battery.percentage));
+  } else {
+    snprintf(line, sizeof(line), "Battery: %s", battery.batteryPresent ? "present, percent --" : "not detected");
+  }
+  display.drawText(panelX + 16, y, line, battery.batteryPresent ? kText : kMuted, 1);
+  y += 18;
+  snprintf(line, sizeof(line), "Charging: %s", chargeStateName(battery.chargeState));
+  display.drawText(panelX + 16, y, line, battery.externalPowerGood ? kText : kMuted, 1);
+  y += 18;
+  snprintf(line,
+           sizeof(line),
+           "Health: %s%s",
+           battery.thermalRegulation ? "thermal " : "normal",
+           battery.currentLimit ? "limit" : "");
+  display.drawText(panelX + 16, y, line, (battery.thermalRegulation || battery.currentLimit) ? kError : kText, 1);
+  y += 18;
+  display.drawText(panelX + 16, y, battery.externalPowerGood ? "External feeds system." : "Battery feeds system.", kMuted, 1);
+  y += 16;
+  display.drawText(panelX + 16, y, "AXP2101 manages power path.", kMuted, 1);
+}
+
+void ThermalUi::renderPowerConfirm(DisplayDriver& display, const AppSettings& settings) {
+  const DisplayInfo info = display.info();
+  const uint16_t panelW = settings.landscape ? 300 : 260;
+  const uint16_t panelH = 138;
+  const int16_t panelX = static_cast<int16_t>((info.width - panelW) / 2);
+  const int16_t panelY = static_cast<int16_t>((info.height - panelH) / 2);
+  display.fillRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(15, 23, 42));
+  display.drawRoundRect(panelX, panelY, panelW, panelH, 8, DisplayDriver::rgb565(248, 113, 113));
+  display.drawText(panelX + 18, panelY + 16, "Power off?", kText, 2);
+  display.drawText(panelX + 18, panelY + 48, "Finish SD work, then shut down.", kMuted, 1);
+  display.drawText(panelX + 18, panelY + 66, "Use physical PWR to wake.", kMuted, 1);
+  const int16_t buttonY = static_cast<int16_t>(panelY + panelH - 44);
+  drawIconButton(display, {static_cast<int16_t>(panelX + 20), buttonY, 104, 34}, Action::SetupCancel);
+  display.drawText(panelX + 58, buttonY + 12, "NO", kText, 1);
+  drawIconButton(display,
+                 {static_cast<int16_t>(panelX + panelW - 124), buttonY, 104, 34},
+                 Action::SoftPower,
+                 true);
+  display.drawText(panelX + panelW - 88, buttonY + 12, "YES", kText, 1);
 }
 
 void ThermalUi::drawOrientationIcon(DisplayDriver& display, int16_t x, int16_t y, bool landscape) {

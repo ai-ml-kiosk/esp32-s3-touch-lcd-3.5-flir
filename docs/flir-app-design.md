@@ -17,8 +17,8 @@ thermal UI, and saves annotated captures to the onboard TF card.
 
 The first complete app screen should prioritize a live thermal viewport with
 only the controls and readouts needed during use: frame status, hot/cold markers,
-center temperature, palette/range state, QMI8658-driven auto-rotation, two-finger
-pinch zoom, capture to TF card, and `SETUP` configuration.
+center temperature, palette/range state, QMI8658-driven auto-rotation, a
+status-bar zoom toggle, capture to TF card, and `SETUP` configuration.
 
 Landscape is the default orientation for this hardware. The Type B board has an
 onboard QMI8658 6-axis IMU on the internal I2C bus. The firmware reads the raw
@@ -27,13 +27,14 @@ after a sustained 500 ms physical orientation change. The status bar should
 place the active orientation icon at the left edge of the screen, followed by a
 hot/cold annotation toggle and a center annotation toggle. The orientation icon
 uses a wide display glyph in landscape and a tall display glyph in portrait, but
-it is not a touch button. Zoom is controlled by two-finger pinch gestures rather
-than a status-bar icon. Pinch-out enables the center crop zoom view; pinch-in
-returns to the full Lepton frame. The status bar shows `Z1X` for full frame and
-`Z2X` for zoomed frame. The current implementation supports one digital zoom
-level: 2x linear zoom, implemented by cropping the Lepton frame to half width
-and half height before scaling it back to the viewport. Zoom mode remaps
-hot/cold marker positions to the visible crop. The hot/cold
+it is not a touch button. Zoom is controlled by tapping the status-bar zoom
+label, not by two-finger pinch. The status bar shows `FULL` for the full Lepton
+frame and `2X` for the center crop zoom view. The current implementation
+supports one digital zoom level: 2x linear zoom, implemented by cropping the
+Lepton frame to half width and half height before scaling it back to the
+viewport. Zoom mode remaps hot/cold marker positions to the visible crop.
+Two-finger touches are intentionally ignored so pinch attempts cannot create
+custom spot-temperature markers. The hot/cold
 toggle controls only the square hot/cold markers and their labels on the live
 thermal viewport and captured BMP. The center toggle controls only the center
 plus marker and center temperature label on the live viewport and captured BMP.
@@ -42,6 +43,12 @@ at that position. Up to three custom markers are shown at once as `M1`, `M2`,
 and `M3`; adding a fourth marker removes the oldest marker first. The status
 bar includes a marker-clear icon that removes all custom spot markers without
 affecting the hot/cold or center annotation toggles.
+The far-right status-bar battery icon is a touch target. It shows PMIC fuel-gauge
+percentage inside the icon when the AXP2101 reports a battery, uses a charging
+mark when external power is present, and opens a compact battery summary window
+when pressed. The summary shows PMIC detection, current power source, battery
+presence/percentage, charging phase, and simple health flags such as thermal
+regulation or current-limit state.
 Palette-scale temperatures and the readout panel are always shown and are not
 affected by these annotation toggles. The selected orientation should be saved
 with other viewer settings so the device boots back into the user's last chosen
@@ -97,10 +104,17 @@ not detected at `0x34`, firmware falls back to the older soft-off behavior by
 blanking the LCD, turning off the backlight, and suppressing frame rendering.
 After a successful PMIC shutdown, the ESP32 is no longer running and wake
 requires the physical `PWR` button, charger insertion, or power reconnect. When
-the power icon is pressed, firmware shows a centered shutdown overlay, finishes
-any active TF-card clip write, closes playback files, flushes capture files, and
-then waits through a 5-second visible countdown before proceeding to Lepton
-low-power and PMIC shutdown.
+the power icon is pressed, firmware first opens a centered confirmation prompt.
+`NO` cancels shutdown; `YES` proceeds. After confirmation, firmware shows a
+shutdown overlay, finishes any active TF-card clip write, closes playback files,
+flushes capture files, then proceeds to Lepton low-power and PMIC shutdown.
+Runtime battery monitoring is read-only. The firmware polls the Waveshare board
+AXP2101 PMIC over the internal board I2C bus at a slow cadence and reports what
+the hardware power path is doing. When external power is present, the PMIC/NVDC
+path is expected to feed the system and manage charging/full-charge behavior for
+the cell. When external power is absent and a battery is present, the PMIC
+reports battery as the active source. Firmware does not manually force battery
+isolation while the thermal stream is running.
 The video clip icon records a short `.tclip` file containing sequential raw
 Lepton frames on the TF card. The capture-review control opens a small
 modal-style review panel
@@ -115,6 +129,8 @@ field is expressed in seconds and cycles through `Off`, `30`, `60`, `120`,
 decreases, the center value zone is non-actionable, and the right zone
 increases. Automatic idle sleep remains disabled in firmware until long-run CCI
 wake and VoSPI recovery are proven stable on this hardware.
+The setup screen top-right reset/default icon reloads firmware defaults into the
+setup draft. The user must press Save to persist those defaults to NVS.
 The user-facing low-power path is the bottom-right software power icon, which
 tries AXP2101 PMIC shutdown first and falls back to soft-off only if PMIC
 shutdown cannot be confirmed. Manual Serial `sleep` leaves the screen on for

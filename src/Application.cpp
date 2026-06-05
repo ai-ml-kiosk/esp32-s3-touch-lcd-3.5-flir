@@ -10,9 +10,11 @@
 #include <time.h>
 #include <strings.h>
 
+#include "AppVersion.h"
 #include "board/BoardPins.h"
 #include "board/DisplayDriver.h"
 #include "board/ImuDriver.h"
+#include "board/PowerMonitor.h"
 #include "board/SoundFeedback.h"
 #include "board/TouchDriver.h"
 #include "flir/LeptonVospi.h"
@@ -50,8 +52,8 @@ constexpr uint8_t kAxp2101ChipId = 0x4A;
 constexpr uint8_t kAxp2101PowerOffBit = 0x01;
 constexpr uint32_t kFrameIntervalMs = 116;
 constexpr uint32_t kImuPollIntervalMs = 100;
+constexpr uint32_t kPowerPollIntervalMs = 1500;
 constexpr uint32_t kAutoRotationDebounceMs = 500;
-constexpr uint32_t kSoftwarePowerOffGraceMs = 5000;
 constexpr int32_t kAutoRotationMinAccel = 2500;
 constexpr int32_t kAutoRotationAxisMargin = 800;
 constexpr size_t kSerialCommandCapacity = 48;
@@ -59,6 +61,7 @@ constexpr size_t kSerialCommandCapacity = 48;
 DisplayDriver display;
 TouchDriver touch;
 ImuDriver imu;
+PowerMonitor powerMonitor;
 SoundFeedback sound;
 TwoWire flirCciWire(1);
 SettingsStore settingsStore;
@@ -83,6 +86,7 @@ uint32_t lastGoodFrameMs = 0;
 uint32_t lastLeptonEscalationMs = 0;
 uint32_t lastObservedRecoveryCount = 0;
 uint32_t lastImuPollMs = 0;
+uint32_t lastPowerPollMs = 0;
 uint32_t lastTouchActionMs = 0;
 uint32_t orientationCandidateSinceMs = 0;
 ImuAccelRaw lastImuAccel;
@@ -100,6 +104,9 @@ bool lastImuClassified = false;
 bool lastImuLandscape = true;
 bool pendingAutoFfcApply = false;
 bool thermalClipRecording = false;
+bool havePowerSnapshot = false;
+bool lastExternalPowerGood = false;
+PowerSource lastPowerSource = PowerSource::Unknown;
 uint32_t thermalClipStartedMs = 0;
 uint8_t thermalClipDurationSeconds = 3;
 char thermalClipBasePath[96] = {};
@@ -111,6 +118,30 @@ void renderFrame();
 bool requestLeptonLowPower();
 bool wakeLeptonFromLowPower();
 bool requestPmicPowerOff();
+
+const char* powerSourceLabel(PowerSource source) {
+  switch (source) {
+    case PowerSource::External:
+      return "external";
+    case PowerSource::Battery:
+      return "battery";
+    case PowerSource::Unknown:
+    default:
+      return "unknown";
+  }
+}
+
+void recoverTouchAfterPowerPathChange(const BatteryStatus& status) {
+  const DisplayInfo info = display.info();
+  touch.setRotation(settings.displayRotation, info.width, info.height);
+  touchWasActive = false;
+  lastTouchActionMs = millis();
+  Serial.printf("Power source changed: source=%s external=%s; touch controller reinitialized\n",
+                powerSourceLabel(status.source),
+                status.externalPowerGood ? "yes" : "no");
+  ui.showStatus(status.source == PowerSource::Battery ? "Battery power" : "External power");
+  needsRender = true;
+}
 
 uint16_t textPixelWidth(const char* text, uint8_t size) {
   return text == nullptr ? 0 : static_cast<uint16_t>(strlen(text) * 6U * size);
@@ -161,13 +192,6 @@ void requestSoftwarePowerOff() {
   drawPowerOffOverlay("Shutting down", thermalClipRecording ? "Completing SD write..." : "Preparing storage...");
   stopThermalClip("Clip saved");
   storage.closeThermalClipPlayback();
-  for (int8_t seconds = static_cast<int8_t>(kSoftwarePowerOffGraceMs / 1000); seconds > 0; --seconds) {
-    char message[32] = {};
-    snprintf(message, sizeof(message), "Power off in %ds", seconds);
-    drawPowerOffOverlay("Shutting down", message);
-    delay(1000);
-    yield();
-  }
   drawPowerOffOverlay("Shutting down", "Powering off camera...");
   ui.showStatus("PMIC power off...");
   needsRender = true;
@@ -236,7 +260,7 @@ const char* resetReasonName(esp_reset_reason_t reason) {
 
 void printPinMap() {
   Serial.println();
-  Serial.println("Waveshare ESP32-S3-Touch-LCD-3.5B FLIR firmware");
+  Serial.printf("Waveshare ESP32-S3-Touch-LCD-3.5B FLIR firmware v%s\n", APP_VERSION);
   Serial.printf("LCD QSPI CS GPIO%d CLK GPIO%d D0..D3 GPIO%d,%d,%d,%d\n",
                 BoardPins::LCD_QSPI_CS,
                 BoardPins::LCD_QSPI_CLK,
@@ -768,6 +792,17 @@ void printRuntimeStatus() {
   Serial.printf(" idle_sleep=%s",
                 settings.inactivitySleepSeconds == 0 ? "off" : "on");
   Serial.printf(" soft_power=%s", softwarePowerOff ? "off" : "on");
+  const BatteryStatus& battery = powerMonitor.status();
+  Serial.printf(" pmic=%s power_source=%s battery=%s battery_pct=%d charge=%s",
+                battery.pmicPresent ? "yes" : "no",
+                battery.source == PowerSource::External ? "external" : (battery.source == PowerSource::Battery ? "battery" : "unknown"),
+                battery.batteryPresent ? "present" : "absent",
+                static_cast<int>(battery.percentage),
+                battery.chargeState == BatteryChargeState::Done
+                    ? "done"
+                    : (battery.chargeState == BatteryChargeState::NotCharging
+                           ? "not-charging"
+                           : (battery.chargeState == BatteryChargeState::Unknown ? "unknown" : "charging")));
   if (settings.inactivitySleepSeconds != 0) {
     Serial.printf(" idle_timeout_s=%u idle_ms=%lu",
                   settings.inactivitySleepSeconds,
@@ -898,7 +933,10 @@ void updateOrientationIfNeeded(bool previousLandscape) {
     return;
   }
 
-  settingsStore.save(settings);
+  if (!settingsStore.save(settings)) {
+    Serial.println("Settings save failed while applying orientation");
+    ui.showStatus("Settings save failed");
+  }
   display.setRotation(settings.displayRotation);
   const DisplayInfo info = display.info();
   touch.setRotation(settings.displayRotation, info.width, info.height);
@@ -1043,7 +1081,10 @@ void updateAutoOrientation() {
                 settings.landscape ? "landscape" : "portrait");
   ui.showStatus(settings.landscape ? "Auto landscape" : "Auto portrait");
   updateOrientationIfNeeded(previousLandscape);
-  settingsStore.save(settings);
+  if (!settingsStore.save(settings)) {
+    Serial.println("Settings save failed after auto-rotation");
+    ui.showStatus("Settings save failed");
+  }
   hasOrientationCandidate = false;
   orientationCandidateSinceMs = 0;
 }
@@ -1077,6 +1118,7 @@ void renderFrame() {
             settings,
             storage,
             storage.isMounted(),
+            powerMonitor.status(),
             storage.lastCaptureBasePath());
   display.flush();
 }
@@ -1112,13 +1154,28 @@ void setup() {
   touch.begin(settings.landscape, displayInfo.width, displayInfo.height);
   touch.setRotation(settings.displayRotation, displayInfo.width, displayInfo.height);
   imu.begin();
+  powerMonitor.begin(Wire);
+  lastPowerPollMs = millis();
+  lastPowerSource = powerMonitor.status().source;
+  lastExternalPowerGood = powerMonitor.status().externalPowerGood;
+  havePowerSnapshot = powerMonitor.status().pmicPresent;
   storage.begin();
   lepton.begin();
   sound.begin();
   sound.setVolume(settings.soundVolume);
   ui.begin(display);
   ui.applySettings(settings);
-  ui.render(display, frame, stats, nullptr, 0, 0, settings, storage, storage.isMounted(), storage.lastCaptureBasePath());
+  ui.render(display,
+            frame,
+            stats,
+            nullptr,
+            0,
+            0,
+            settings,
+            storage,
+            storage.isMounted(),
+            powerMonitor.status(),
+            storage.lastCaptureBasePath());
   display.flush();
   allocateViewportBuffer();
 
@@ -1186,11 +1243,13 @@ void loop() {
     }
   }
 
-  const bool touchActionReady = ui.setupActive()
-                                    ? touchSampled
-                                    : (touchSampled &&
-                                       (ui.gestureActive() || touchPoint.touchCount >= 2 ||
-                                        (touchActive && touchPressedEdge)));
+  const bool touchActionReady = touchSampled &&
+                                (ui.setupActive() ||
+                                 ui.gestureActive() ||
+                                 touchPoint.touchCount >= 2 ||
+                                 !touchActive ||
+                                 touchPressedEdge ||
+                                 (touchActive && now - lastTouchActionMs >= 450));
   if (touchActionReady && !touchConsumedForWake && !leptonLowPower && !softwarePowerOff) {
     const AppSettings previousSettings = settings;
     const bool handled = ui.handleTouch(touchPoint, settings, display, storage, thermal, frame, stats, viewportPixels, viewportWidth, viewportHeight);
@@ -1234,7 +1293,10 @@ void loop() {
         if (previousSettings.soundVolume != settings.soundVolume) {
           sound.setVolume(settings.soundVolume);
         }
-        settingsStore.save(settings);
+        if (!settingsStore.save(settings)) {
+          Serial.println("Settings save failed after UI change");
+          ui.showStatus("Settings save failed");
+        }
       }
       lastUserActivityMs = millis();
       needsRender = true;
@@ -1246,6 +1308,22 @@ void loop() {
   }
 
   if (!softwarePowerOff && ui.updatePlayback(storage, thermal, settings, viewportWidth, viewportHeight)) {
+    needsRender = true;
+  }
+
+  if (!softwarePowerOff && now - lastPowerPollMs >= kPowerPollIntervalMs) {
+    lastPowerPollMs = now;
+    powerMonitor.update();
+    const BatteryStatus& powerStatus = powerMonitor.status();
+    if (powerStatus.pmicPresent &&
+        (!havePowerSnapshot ||
+         powerStatus.source != lastPowerSource ||
+         powerStatus.externalPowerGood != lastExternalPowerGood)) {
+      lastPowerSource = powerStatus.source;
+      lastExternalPowerGood = powerStatus.externalPowerGood;
+      havePowerSnapshot = true;
+      recoverTouchAfterPowerPathChange(powerStatus);
+    }
     needsRender = true;
   }
 

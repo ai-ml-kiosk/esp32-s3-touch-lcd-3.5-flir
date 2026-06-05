@@ -57,6 +57,15 @@ independent `GPIO17/GPIO18` map.
 - ESP32-S3 Wi-Fi, the built-in LCD backlight, TF writes, and the Lepton module
   can create burst current. Use a stable USB-C or battery supply and confirm the
   3.3V rail can support the external FLIR breakout.
+- The Waveshare Type B power path is monitored through the onboard AXP2101 PMIC
+  at I2C address `0x34` on the internal board I2C bus. Firmware reads PMIC
+  status, battery-present state, external-power-good state, charging phase, and
+  fuel-gauge percentage when available.
+- External-input versus battery sourcing is a PMIC hardware policy. Firmware
+  displays the reported source but does not try to override the AXP2101 NVDC
+  power path during live thermal capture. With external power present, the PMIC
+  is expected to power the system from external input and manage the battery;
+  without external power, the board runs from the attached battery.
 - If thermal frames fail when the display backlight or TF card is active, test
   with the backlight dimmed and TF card removed to isolate power dips from SPI
   timing problems.

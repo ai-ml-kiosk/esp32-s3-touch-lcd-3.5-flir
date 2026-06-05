@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1120" height="760" viewBox="0 0 1120 760" role="img" aria-labelledby="title desc">
   <title id="title">FLIR thermal app expected landscape runtime screen</title>
-  <desc id="desc">Mockup of the Waveshare 480 by 320 landscape touch screen showing live thermal viewport, status bar orientation indicator, two-finger pinch zoom state, hot/cold annotation toggle, center annotation toggle, custom spot markers, TF-card free-space status, temperature readouts, palette scale, compact controls, and red PMIC shutdown power control.</desc>
+  <desc id="desc">Mockup of the Waveshare 480 by 320 landscape touch screen showing live thermal viewport, status bar orientation indicator, status zoom state, hot/cold annotation toggle, center annotation toggle, custom spot markers, TF-card free-space status, battery percentage/source status, temperature readouts, palette scale, compact controls, and red PMIC shutdown power control.</desc>
   <defs>
     <style>
       .page { fill: #f7f8fb; }
@@ -90,8 +90,14 @@
   <text class="label" x="444" y="207">LIVE</text>
   <circle cx="486" cy="202" r="5" fill="#22c55e"/>
   <text class="small" x="512" y="207">8.6 fps</text>
-  <text class="small" x="716" y="201" text-anchor="end">TF OK</text>
-  <text class="tiny" x="716" y="215" text-anchor="end">FREE 14.8G</text>
+  <text class="small" x="676" y="201" text-anchor="end">TF OK</text>
+  <text class="tiny" x="676" y="215" text-anchor="end">FREE 14.8G</text>
+  <rect x="700" y="194" width="30" height="16" fill="none" stroke="#e5e7eb" stroke-width="1.3"/>
+  <rect x="730" y="199" width="3" height="6" fill="#e5e7eb"/>
+  <rect x="702" y="196" width="22" height="12" fill="#22c55e"/>
+  <text class="tiny" x="715" y="207" text-anchor="middle" fill="#0f172a">84</text>
+  <rect x="735" y="194" width="2" height="8" fill="#22c55e"/>
+  <rect x="733" y="200" width="5" height="2" fill="#22c55e"/>
 
   <rect x="246" y="228" width="420" height="208" fill="url(#thermal)"/>
   <rect x="246" y="228" width="420" height="208" fill="url(#hotBlob)" opacity="0.82"/>
@@ -172,9 +178,10 @@
   <path class="line" d="M584 202 H890"/>
   <text class="calloutTitle" x="905" y="196">Status bar</text>
   <text class="callout" x="905" y="221">
-    <tspan x="905" dy="0">orientation indicator, Z1X/Z2X,</tspan>
+    <tspan x="905" dy="0">orientation indicator, FULL/2X,</tspan>
     <tspan x="905" dy="20">overlay, center overlay, marker</tspan>
-    <tspan x="905" dy="20">clear, live state, TF/free space</tspan>
+    <tspan x="905" dy="20">clear, live, TF/free, battery</tspan>
+    <tspan x="905" dy="20">percent/source summary</tspan>
   </text>
 
   <path class="line" d="M666 320 H890"/>
@@ -256,7 +263,7 @@
   <text class="callout" x="38" y="137">
     <tspan x="38" dy="0">QMI8658</tspan>
     <tspan x="38" dy="20">auto-rotation;</tspan>
-    <tspan x="38" dy="20">Z1X/Z2X, hi/low,</tspan>
+    <tspan x="38" dy="20">FULL/2X, hi/low,</tspan>
     <tspan x="38" dy="20">center toggles</tspan>
   </text>
 

@@ -109,13 +109,14 @@ Actions performed:
   it falls back to blanking the LCD, turning off the backlight, and suppressing
   frame rendering until touch or Serial `wake` restores the app.
 - Treat the software power icon like a shutdown control, not a sleep button.
-  The firmware now shows a centered shutdown overlay, finishes any active clip
-  write, closes playback files, flushes raw/BMP capture files, and waits through
-  a 5-second visible countdown before requesting Lepton low-power and PMIC
-  shutdown. Avoid intentionally pressing it during heavy TF-card activity when
-  possible, but the normal power-button path is designed to complete
-  firmware-owned writes before power is cut. After a confirmed PMIC shutdown,
-  wake requires physical `PWR`, charger insertion, or power reconnect; touch
+  The first press opens a centered confirmation prompt. `NO` cancels; `YES`
+  starts shutdown. After confirmation, firmware shows a shutdown overlay,
+  finishes any active clip write, closes playback files, flushes raw/BMP capture
+  files, then requests Lepton low-power and PMIC shutdown. Avoid intentionally
+  pressing it during heavy TF-card activity when possible, but the normal
+  power-button path is designed to complete firmware-owned writes before power
+  is cut. After a confirmed PMIC shutdown, wake requires physical `PWR`, charger
+  insertion, or power reconnect; touch
   wake applies only to the fallback soft-off state.
 - Added cooperative `yield()` calls in BMP save, BMP load, raw save, and capture
   directory loops.
@@ -182,17 +183,71 @@ Current behavior:
 
 ## Developer Notes
 
+### Firmware Backup And Rollback
+
+Before flashing experimental firmware, copy the current combined factory image
+to a local backup directory. Keep these binaries local; `firmware-backups/` is
+ignored by Git.
+
+Use segmented flashing for normal firmware updates when you want to preserve
+setup values. Writing the combined `firmware.factory.bin` at `0x0` can erase the
+NVS settings partition and make setup values appear to return to defaults after
+the flash.
+
+```bash
+/private/tmp/platformio-test-esp32-s3/penv/bin/python /private/tmp/platformio-test-esp32-s3/packages/tool-esptoolpy/esptool.py \
+  --chip esp32s3 \
+  --port /dev/cu.usbmodem1301 \
+  --baud 921600 \
+  write_flash \
+  0x0 .pio/build/waveshare-esp32-s3-touch-lcd-35b-flir/bootloader.bin \
+  0x8000 .pio/build/waveshare-esp32-s3-touch-lcd-35b-flir/partitions.bin \
+  0xe000 /private/tmp/platformio-test-esp32-s3/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin \
+  0x10000 .pio/build/waveshare-esp32-s3-touch-lcd-35b-flir/firmware.bin
+```
+
+Current rollback backup created during stabilization:
+
+```text
+firmware-backups/firmware-20260605-usbcdc-setup-touch.factory.bin
+sha256 4760ddab82ce5331c8cf6bdaf100cac2991948f972e5105918a372ce709e56df
+```
+
+Create a new backup after a successful build:
+
+```bash
+mkdir -p firmware-backups
+cp .pio/build/waveshare-esp32-s3-touch-lcd-35b-flir/firmware.factory.bin firmware-backups/firmware-YYYYMMDD-description.factory.bin
+shasum -a 256 firmware-backups/firmware-YYYYMMDD-description.factory.bin
+```
+
+Restore a backup through the ESP32-S3 USB flashing path:
+
+```bash
+python /private/tmp/platformio-test-esp32-s3/packages/tool-esptoolpy/esptool.py \
+  --chip esp32s3 \
+  --port /dev/cu.usbmodem1301 \
+  --baud 921600 \
+  write_flash 0x0 firmware-backups/firmware-YYYYMMDD-description.factory.bin
+```
+
+Use the actual current serial port if macOS assigns a different
+`/dev/cu.usbmodem*` name.
+
 ### Display And UI
 
 - `DisplayDriver` wraps the Waveshare AXS15231B display path.
 - Runtime diagrams and firmware use icon buttons for bottom actions.
 - Status bar includes:
   - orientation indicator only,
-  - `Z1X` / `Z2X` pinch-zoom state,
+  - `FULL` / `2X` zoom toggle,
   - hot/cold annotation toggle,
   - center annotation toggle,
   - custom marker clear icon,
-  - live/storage status text.
+  - live/storage status text,
+  - battery icon with PMIC percentage/source summary.
+- Two-finger touches are ignored by design. Zoom is a status-bar tap action so
+  pinch attempts cannot accidentally place custom spot-temperature markers.
 - The bottom action row includes Palette, image quality, Capture, Review, and
   Setup. Runtime manual FFC was removed after the CCI run-FFC path repeatedly
   froze the live UI; use setup Auto FFC instead.
@@ -200,6 +255,27 @@ Current behavior:
   display is noisy, and `DETAIL` if motion feels too soft.
 - Palette scale temperatures and readouts must remain independent from
   annotation toggles.
+
+### Battery And External Power Monitoring
+
+- The firmware reads the onboard AXP2101 PMIC at I2C `0x34` every 5 seconds.
+- Runtime status logs include `pmic`, `power_source`, `battery`, `battery_pct`,
+  and `charge`.
+- The status-bar battery icon shows the PMIC fuel-gauge percentage when a
+  battery is detected. A charging mark indicates external power is present.
+- Pressing the battery icon opens an on-screen summary with PMIC detection,
+  source, battery presence, charging phase, and basic health flags.
+- Firmware reports the AXP2101 power path; it does not manually force external
+  power or battery routing. If external-power freezes return, correlate the
+  freeze with `power_source=external`, `charge`, and PMIC health flags.
+- If icons stop responding after USB/external power is disconnected, suspect a
+  board-I2C touch-controller disturbance during the AXP2101 power-path
+  transition. Firmware now detects PMIC source changes, reinitializes the touch
+  controller mapping, clears stale touch-edge state, and logs `Power source
+  changed ... touch controller reinitialized`.
+- Status-bar icons use enlarged full-height touch targets and the main UI now
+  receives touch-release samples so control latches can clear even when running
+  from battery.
 
 ### FLIR Acquisition
 

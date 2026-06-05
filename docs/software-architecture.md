@@ -44,7 +44,8 @@ From `ui/thermal_ui.py`:
 | `sound_feedback` | Onboard ES8311/I2S audio initialization, persisted volume control, and procedural UI chimes for click, alert, and scroll events. |
 | `capture_storage` | Optional BMP/raw frame capture and logs on the onboard TF card. |
 | `setup_ui` | On-device settings screen for save path, orientation, touch inactivity timeout setting, temperature offset calibration, raw/filename capture switches, Auto FFC, clip duration, sound volume, fixed Save/Cancel actions, and reserved scroll lanes. |
-| `thermal_ui` | Main screen layout, compact icon controls, QMI8658 orientation, pinch zoom state, status-bar annotation toggles, custom spot markers, image-quality control, high/low markers, center marker, TF-card status, and software power-off. |
+| `power_monitor` | AXP2101 PMIC status, external-power state, battery presence, charging phase, fuel-gauge percentage, and health flags. |
+| `thermal_ui` | Main screen layout, compact icon controls, QMI8658 orientation, status-bar zoom toggle, status-bar annotation toggles, custom spot markers, image-quality control, high/low markers, center marker, TF-card/battery status, and software power-off. |
 | `settings` | Non-volatile settings in NVS, with optional TF-card config later. |
 
 `src/main.cpp` should remain a thin entry point. The top-level lifecycle belongs

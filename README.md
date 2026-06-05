@@ -1,5 +1,7 @@
 # ESP32-S3 Touch LCD 3.5B FLIR
 
+Firmware app version: `0.2.0`
+
 PlatformIO firmware scaffold for the Waveshare ESP32-S3-Touch-LCD-3.5B board
 and a FLIR Lepton 2.5 module on breakout board v1.4.
 
@@ -41,8 +43,8 @@ Create and push a version tag to build and attach both the app image and the
 factory image to a GitHub Release:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Release assets:
@@ -79,6 +81,18 @@ To build the same artifacts locally:
 ```bash
 bash scripts/build_release.sh
 ```
+
+Before flashing experimental firmware, keep a local rollback copy of the latest
+known-good factory image:
+
+```bash
+mkdir -p firmware-backups
+cp .pio/build/waveshare-esp32-s3-touch-lcd-35b-flir/firmware.factory.bin firmware-backups/firmware-YYYYMMDD-description.factory.bin
+shasum -a 256 firmware-backups/firmware-YYYYMMDD-description.factory.bin
+```
+
+See [Troubleshooting Actions Log](docs/troubleshooting-actions.md) for the
+restore command.
 
 ## Monitor
 

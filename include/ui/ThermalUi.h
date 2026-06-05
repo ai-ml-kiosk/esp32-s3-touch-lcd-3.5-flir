@@ -1,6 +1,7 @@
 #pragma once
 
 #include "board/DisplayDriver.h"
+#include "board/PowerMonitor.h"
 #include "board/TouchDriver.h"
 #include "settings/AppSettings.h"
 #include "storage/CaptureStorage.h"
@@ -20,6 +21,7 @@ class ThermalUi {
               const AppSettings& settings,
               CaptureStorage& storage,
               bool storageReady,
+              const BatteryStatus& battery,
               const char* lastCaptureBasePath);
   bool handleTouch(const TouchPoint& touch,
                    AppSettings& settings,
@@ -67,7 +69,11 @@ class ThermalUi {
     CenterTemperature,
     ClearCustomMarkers,
     Sound,
+    Zoom,
+    Battery,
     SoftPower,
+    SoftPowerCancel,
+    SoftPowerConfirm,
     PlaybackClose,
     PlaybackDelete,
     PlaybackPrev,
@@ -79,6 +85,7 @@ class ThermalUi {
     SetupScrollDown,
     SetupCancel,
     SetupSave,
+    SetupDefault,
     SetupPath,
     SetupIdle,
     SetupIdleDown,
@@ -140,7 +147,7 @@ class ThermalUi {
   void renderSetup(DisplayDriver& display, const AppSettings& settings);
   void refreshCaptureBrowser(CaptureStorage& storage, const AppSettings& settings);
   void renderPlayback(DisplayDriver& display, const AppSettings& settings, CaptureStorage& storage);
-  void renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady);
+  void renderWaiting(DisplayDriver& display, const AppSettings& settings, bool storageReady, const BatteryStatus& battery);
   void drawButton(DisplayDriver& display, const Rect& rect, const char* label, bool primary = false);
   void drawToggle(DisplayDriver& display, const Rect& rect, bool enabled);
   void drawIconButton(DisplayDriver& display, const Rect& rect, Action action, bool primary = false);
@@ -149,6 +156,9 @@ class ThermalUi {
   void drawCenterTempIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled);
   void drawClearMarkersIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled);
   void drawSoundIcon(DisplayDriver& display, int16_t cx, int16_t cy, bool enabled);
+  void drawBatteryIcon(DisplayDriver& display, int16_t x, int16_t y, const BatteryStatus& battery);
+  void renderBatterySummary(DisplayDriver& display, const AppSettings& settings, const BatteryStatus& battery);
+  void renderPowerConfirm(DisplayDriver& display, const AppSettings& settings);
   void drawOrientationIcon(DisplayDriver& display, int16_t x, int16_t y, bool landscape);
   void drawTempLabel(DisplayDriver& display, int16_t x, int16_t y, const char* text, uint16_t color);
   void addCustomMarker(uint16_t localX, uint16_t localY, uint16_t viewportWidth, uint16_t viewportHeight);
@@ -192,6 +202,8 @@ class ThermalUi {
   bool zoomed_ = false;
   bool setupActive_ = false;
   bool playbackActive_ = false;
+  bool batterySummaryActive_ = false;
+  bool powerConfirmActive_ = false;
   bool hasCapturePreview_ = false;
   bool hasCaptureThumbnail_ = false;
   bool videoClipRequest_ = false;
@@ -207,10 +219,16 @@ class ThermalUi {
   bool setupDragActive_ = false;
   bool setupDragMoved_ = false;
   bool setupControlHeld_ = false;
+  bool mainControlHeld_ = false;
+  Action mainHeldAction_ = Action::None;
+  Action lastMainAction_ = Action::None;
   Action setupPendingAction_ = Action::None;
+  Action lastSetupAction_ = Action::None;
   uint16_t setupDragStartY_ = 0;
   uint16_t setupDragLastY_ = 0;
   uint32_t setupDragLastMs_ = 0;
+  uint32_t lastMainActionMs_ = 0;
+  uint32_t lastSetupActionMs_ = 0;
   uint16_t* capturePreviewPixels_ = nullptr;
   uint16_t* captureThumbnailPixels_ = nullptr;
   uint16_t capturePreviewWidth_ = 0;
@@ -233,6 +251,7 @@ class ThermalUi {
   uint32_t lastTouchMs_ = 0;
   uint32_t ignoreTouchUntilMs_ = 0;
   uint32_t ignoreSetupTouchUntilMs_ = 0;
+  bool setupWaitForRelease_ = false;
   char feedback_[40] = "Ready";
   uint32_t feedbackUntilMs_ = 0;
 };
