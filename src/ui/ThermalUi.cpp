@@ -83,7 +83,19 @@ const char* qualityName(uint8_t mode) {
 }
 
 uint16_t orientationWidth(bool landscape) {
-  return 34;
+  return landscape ? 24 : 20;
+}
+
+uint16_t statusIconStep(bool landscape) {
+  return landscape ? 40 : 36;
+}
+
+uint16_t hotColdButtonWidth(bool landscape) {
+  return landscape ? 56 : 32;
+}
+
+uint16_t paletteExtraGap(bool landscape) {
+  return landscape ? 12 : 10;
 }
 
 const char* powerSourceName(PowerSource source) {
@@ -494,19 +506,30 @@ void ThermalUi::render(DisplayDriver& display,
   const int16_t orientX = 8;
   drawOrientationIcon(display, orientX, 10, settings.landscape);
 
-  const int16_t hotColdX = orientX + orientW + 8;
-  drawHotColdIcon(display, hotColdX + 12, 21, settings.showHotColdDetails);
+  const uint16_t topStep = statusIconStep(settings.landscape);
+  const int16_t hotColdX = orientX + orientW + 14;
+  const uint16_t hotColdW = hotColdButtonWidth(settings.landscape);
+  if (settings.landscape) {
+    display.fillRoundRect(hotColdX - 4,
+                          7,
+                          hotColdW,
+                          30,
+                          6,
+                          settings.showHotColdDetails ? DisplayDriver::rgb565(30, 41, 59) : kButton);
+    display.drawRoundRect(hotColdX - 4, 7, hotColdW, 30, 6, DisplayDriver::rgb565(100, 116, 139));
+  }
+  drawHotColdIcon(display, hotColdX + static_cast<int16_t>(hotColdW / 2) - 4, 21, settings.showHotColdDetails);
 
-  const int16_t centerX = hotColdX + 34;
+  const int16_t centerX = hotColdX + hotColdW + (settings.landscape ? 8 : topStep - hotColdW);
   drawCenterTempIcon(display, centerX + 12, 21, settings.showCenterTemperature);
 
-  const int16_t clearMarkersX = centerX + 34;
+  const int16_t clearMarkersX = centerX + topStep;
   drawClearMarkersIcon(display, clearMarkersX + 12, 21, customMarkerCount_ > 0);
 
-  const int16_t soundX = clearMarkersX + 34;
+  const int16_t soundX = clearMarkersX + topStep;
   drawSoundIcon(display, soundX + 12, 21, settings.soundEnabled);
 
-  const int16_t zoomTextX = soundX + 36;
+  const int16_t zoomTextX = soundX + topStep;
   display.drawText(zoomTextX, 14, zoomed_ ? "2X" : "FULL", zoomed_ ? kText : kMuted, 1);
 
   const int16_t liveX = zoomTextX + 34;
@@ -651,16 +674,18 @@ void ThermalUi::render(DisplayDriver& display,
   const uint16_t buttonW = settings.landscape ? 42 : 32;
   const uint16_t buttonH = 32;
   const uint16_t gap = settings.landscape ? 8 : 7;
+  const uint16_t paletteGap = paletteExtraGap(settings.landscape);
   const uint16_t mainButtonCount = 6;
   const uint16_t reservedPowerGap = settings.landscape ? 0 : buttonW;
-  const uint16_t totalButtonW = mainButtonCount * buttonW + (mainButtonCount - 1) * gap + reservedPowerGap;
+  const uint16_t totalButtonW = mainButtonCount * buttonW + (mainButtonCount - 1) * gap + paletteGap + reservedPowerGap;
   const uint16_t startX = totalButtonW < info.width ? (info.width - totalButtonW) / 2 : 0;
   drawIconButton(display, {static_cast<int16_t>(startX), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Palette);
-  drawIconButton(display, {static_cast<int16_t>(startX + buttonW + gap), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Noise);
-  drawIconButton(display, {static_cast<int16_t>(startX + 2 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Capture);
-  drawIconButton(display, {static_cast<int16_t>(startX + 3 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::VideoClip, videoClipActive_);
-  drawIconButton(display, {static_cast<int16_t>(startX + 4 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Playback);
-  drawIconButton(display, {static_cast<int16_t>(startX + 5 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Setup);
+  const uint16_t noiseX = startX + buttonW + gap + paletteGap;
+  drawIconButton(display, {static_cast<int16_t>(noiseX), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Noise);
+  drawIconButton(display, {static_cast<int16_t>(noiseX + buttonW + gap), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Capture);
+  drawIconButton(display, {static_cast<int16_t>(noiseX + 2 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::VideoClip, videoClipActive_);
+  drawIconButton(display, {static_cast<int16_t>(noiseX + 3 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Playback);
+  drawIconButton(display, {static_cast<int16_t>(noiseX + 4 * (buttonW + gap)), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::Setup);
   drawIconButton(display, {static_cast<int16_t>(info.width - buttonW - 4), static_cast<int16_t>(buttonY), buttonW, buttonH}, Action::SoftPower);
   drawFeedback(display, settings.landscape);
 
@@ -694,8 +719,10 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
   }
 
   if (touch.pressed && touch.touchCount >= 2) {
+    // Battery operation can make the capacitive controller report a ghost
+    // second point. Pinch zoom is disabled, so keep the first coordinate as a
+    // normal tap instead of dropping the action.
     pinchActive_ = false;
-    return false;
   }
   if (pinchActive_) {
     pinchActive_ = false;
@@ -755,7 +782,7 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
   }
 
   if (action != Action::None) {
-    if (mainControlHeld_ && mainHeldAction_ == action) {
+    if (mainControlHeld_ && mainHeldAction_ == action && now - lastMainActionMs_ < 3000) {
       return true;
     }
     if (lastMainAction_ == action && now - lastMainActionMs_ < 260) {
@@ -765,13 +792,22 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
     mainHeldAction_ = action;
     lastMainAction_ = action;
     lastMainActionMs_ = now;
+  } else {
+    mainControlHeld_ = false;
+    mainHeldAction_ = Action::None;
   }
 
   switch (action) {
     case Action::Palette:
       pendingSoundEvent_ = SoundEvent::Click;
       cyclePalette(settings);
+      Serial.printf("UI action: palette -> %s at x=%u y=%u touches=%u\n",
+                    paletteName(palette_),
+                    touch.x,
+                    touch.y,
+                    static_cast<unsigned>(touch.touchCount));
       showStatus(paletteName(palette_));
+      ignoreTouchUntilMs_ = now + 650;
       return true;
     case Action::Noise:
       pendingSoundEvent_ = SoundEvent::Click;
@@ -1017,7 +1053,12 @@ bool ThermalUi::handleTouch(const TouchPoint& touch,
     case Action::HotColdDetails:
       pendingSoundEvent_ = SoundEvent::Click;
       settings.showHotColdDetails = !settings.showHotColdDetails;
-      ignoreTouchUntilMs_ = now + 350;
+      Serial.printf("UI action: high_low -> %s at x=%u y=%u touches=%u\n",
+                    settings.showHotColdDetails ? "on" : "off",
+                    touch.x,
+                    touch.y,
+                    static_cast<unsigned>(touch.touchCount));
+      ignoreTouchUntilMs_ = now + 650;
       showStatus(settings.showHotColdDetails ? "High/low on" : "High/low off");
       return true;
     case Action::CenterTemperature:
@@ -1354,23 +1395,26 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
 
   const uint16_t orientW = orientationWidth(landscape);
   const int16_t orientX = 8;
-  const int16_t hotColdX = orientX + orientW + 8;
-  if (contains({static_cast<int16_t>(hotColdX - 8), 0, 40, 44}, x, y)) {
+  const uint16_t topStep = statusIconStep(landscape);
+  const int16_t hotColdX = orientX + orientW + 14;
+  const uint16_t hotColdW = hotColdButtonWidth(landscape);
+  const uint16_t hotColdHitW = landscape ? static_cast<uint16_t>(hotColdW + 12) : static_cast<uint16_t>(topStep + 4);
+  if (contains({static_cast<int16_t>(hotColdX - 10), 0, hotColdHitW, 46}, x, y)) {
     return Action::HotColdDetails;
   }
-  const int16_t centerX = hotColdX + 34;
-  if (contains({static_cast<int16_t>(centerX - 8), 0, 40, 44}, x, y)) {
+  const int16_t centerX = hotColdX + hotColdW + (landscape ? 8 : topStep - hotColdW);
+  if (contains({static_cast<int16_t>(centerX + (landscape ? 4 : -4)), 0, topStep, 46}, x, y)) {
     return Action::CenterTemperature;
   }
-  const int16_t clearMarkersX = centerX + 34;
-  if (contains({static_cast<int16_t>(clearMarkersX - 8), 0, 40, 44}, x, y)) {
+  const int16_t clearMarkersX = centerX + topStep;
+  if (contains({static_cast<int16_t>(clearMarkersX - 6), 0, topStep, 46}, x, y)) {
     return Action::ClearCustomMarkers;
   }
-  const int16_t soundX = clearMarkersX + 34;
-  if (contains({static_cast<int16_t>(soundX - 8), 0, 40, 44}, x, y)) {
+  const int16_t soundX = clearMarkersX + topStep;
+  if (contains({static_cast<int16_t>(soundX - 6), 0, topStep, 46}, x, y)) {
     return Action::Sound;
   }
-  const int16_t zoomTextX = soundX + 36;
+  const int16_t zoomTextX = soundX + topStep;
   if (contains({static_cast<int16_t>(zoomTextX - 8), 0, 54, 44}, x, y)) {
     return Action::Zoom;
   }
@@ -1381,31 +1425,32 @@ ThermalUi::Action ThermalUi::hitTest(uint16_t x, uint16_t y, bool landscape) con
   const uint16_t buttonY = screenH - (landscape ? 52 : 54);
   const uint16_t buttonW = landscape ? 42 : 32;
   const uint16_t gap = landscape ? 8 : 7;
+  const uint16_t paletteGap = paletteExtraGap(landscape);
   if (contains({static_cast<int16_t>(screenW - buttonW - 8), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + 8), 52}, x, y)) {
     return Action::SoftPower;
   }
   const uint16_t mainButtonCount = 6;
   const uint16_t reservedPowerGap = landscape ? 0 : buttonW;
-  const uint16_t totalButtonW = mainButtonCount * buttonW + (mainButtonCount - 1) * gap + reservedPowerGap;
+  const uint16_t totalButtonW = mainButtonCount * buttonW + (mainButtonCount - 1) * gap + paletteGap + reservedPowerGap;
   const uint16_t startX = totalButtonW < screenW ? (screenW - totalButtonW) / 2 : 0;
-  const uint16_t hitW = buttonW + gap;
+  const uint16_t noiseX = startX + buttonW + gap + paletteGap;
   const uint16_t hitH = 52;
-  if (contains({static_cast<int16_t>(startX - gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(startX - gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap + paletteGap / 2), hitH}, x, y)) {
     return Action::Palette;
   }
-  if (contains({static_cast<int16_t>(startX + buttonW + gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(noiseX - gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap), hitH}, x, y)) {
     return Action::Noise;
   }
-  if (contains({static_cast<int16_t>(startX + 2 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(noiseX + buttonW + gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap), hitH}, x, y)) {
     return Action::Capture;
   }
-  if (contains({static_cast<int16_t>(startX + 3 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(noiseX + 2 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap), hitH}, x, y)) {
     return Action::VideoClip;
   }
-  if (contains({static_cast<int16_t>(startX + 4 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(noiseX + 3 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap), hitH}, x, y)) {
     return Action::Playback;
   }
-  if (contains({static_cast<int16_t>(startX + 5 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), hitW, hitH}, x, y)) {
+  if (contains({static_cast<int16_t>(noiseX + 4 * (buttonW + gap) - gap / 2), static_cast<int16_t>(buttonY - 10), static_cast<uint16_t>(buttonW + gap), hitH}, x, y)) {
     return Action::Setup;
   }
   return Action::None;
@@ -2459,18 +2504,29 @@ void ThermalUi::renderWaiting(DisplayDriver& display, const AppSettings& setting
   const int16_t orientX = 8;
   drawOrientationIcon(display, orientX, 10, settings.landscape);
 
-  const int16_t hotColdX = orientX + orientW + 8;
-  drawHotColdIcon(display, hotColdX + 12, 21, settings.showHotColdDetails);
-  const int16_t centerX = hotColdX + 34;
+  const uint16_t topStep = statusIconStep(settings.landscape);
+  const int16_t hotColdX = orientX + orientW + 14;
+  const uint16_t hotColdW = hotColdButtonWidth(settings.landscape);
+  if (settings.landscape) {
+    display.fillRoundRect(hotColdX - 4,
+                          7,
+                          hotColdW,
+                          30,
+                          6,
+                          settings.showHotColdDetails ? DisplayDriver::rgb565(30, 41, 59) : DisplayDriver::rgb565(226, 232, 240));
+    display.drawRoundRect(hotColdX - 4, 7, hotColdW, 30, 6, DisplayDriver::rgb565(100, 116, 139));
+  }
+  drawHotColdIcon(display, hotColdX + static_cast<int16_t>(hotColdW / 2) - 4, 21, settings.showHotColdDetails);
+  const int16_t centerX = hotColdX + hotColdW + (settings.landscape ? 8 : topStep - hotColdW);
   drawCenterTempIcon(display, centerX + 12, 21, settings.showCenterTemperature);
 
-  const int16_t clearMarkersX = centerX + 34;
+  const int16_t clearMarkersX = centerX + topStep;
   drawClearMarkersIcon(display, clearMarkersX + 12, 21, customMarkerCount_ > 0);
 
-  const int16_t soundX = clearMarkersX + 34;
+  const int16_t soundX = clearMarkersX + topStep;
   drawSoundIcon(display, soundX + 12, 21, settings.soundEnabled);
 
-  const int16_t zoomTextX = soundX + 36;
+  const int16_t zoomTextX = soundX + topStep;
   display.drawText(zoomTextX, 14, zoomed_ ? "2X" : "FULL", DisplayDriver::rgb565(15, 23, 42), 1);
 
   const int16_t waitX = zoomTextX + 34;
@@ -2752,7 +2808,7 @@ void ThermalUi::drawBatteryIcon(DisplayDriver& display, int16_t x, int16_t y, co
     }
     char pctText[8] = {};
     snprintf(pctText, sizeof(pctText), "%d", static_cast<int>(pct));
-    display.drawText(x + 5, y + 8, pctText, kBg, 1);
+    display.drawText(x + 5, y + 8, pctText, DisplayDriver::rgb565(255, 255, 255), 1);
   } else {
     display.drawText(x + 8, y + 8, "--", outline, 1);
   }
@@ -2828,17 +2884,17 @@ void ThermalUi::renderPowerConfirm(DisplayDriver& display, const AppSettings& se
 void ThermalUi::drawOrientationIcon(DisplayDriver& display, int16_t x, int16_t y, bool landscape) {
   const uint16_t color = kText;
   const uint16_t muted = DisplayDriver::rgb565(100, 116, 139);
-  const uint16_t w = landscape ? 28 : 18;
-  const uint16_t h = landscape ? 18 : 28;
-  const int16_t bodyX = x + (landscape ? 0 : 5);
-  const int16_t bodyY = y + (landscape ? 5 : 0);
+  const uint16_t w = landscape ? 22 : 14;
+  const uint16_t h = landscape ? 14 : 22;
+  const int16_t bodyX = x + (landscape ? 1 : 4);
+  const int16_t bodyY = y + (landscape ? 7 : 3);
 
   display.drawRoundRect(bodyX, bodyY, w, h, 4, color);
   display.fillRect(bodyX + 3, bodyY + 3, w - 6, h - 6, muted);
   if (landscape) {
-    display.fillRect(bodyX + w - 3, bodyY + 7, 1, 4, color);
+    display.fillRect(bodyX + w - 3, bodyY + 5, 1, 4, color);
   } else {
-    display.fillRect(bodyX + 7, bodyY + h - 3, 4, 1, color);
+    display.fillRect(bodyX + 5, bodyY + h - 3, 4, 1, color);
   }
 }
 

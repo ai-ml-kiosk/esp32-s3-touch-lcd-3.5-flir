@@ -54,6 +54,7 @@ constexpr uint32_t kFrameIntervalMs = 116;
 constexpr uint32_t kImuPollIntervalMs = 100;
 constexpr uint32_t kPowerPollIntervalMs = 1500;
 constexpr uint32_t kAutoRotationDebounceMs = 500;
+constexpr uint32_t kSettingsDeferredSaveMs = 1200;
 constexpr int32_t kAutoRotationMinAccel = 2500;
 constexpr int32_t kAutoRotationAxisMargin = 800;
 constexpr size_t kSerialCommandCapacity = 48;
@@ -103,11 +104,13 @@ bool lastImuReadOk = false;
 bool lastImuClassified = false;
 bool lastImuLandscape = true;
 bool pendingAutoFfcApply = false;
+bool pendingSettingsSave = false;
 bool thermalClipRecording = false;
 bool havePowerSnapshot = false;
 bool lastExternalPowerGood = false;
 PowerSource lastPowerSource = PowerSource::Unknown;
 uint32_t thermalClipStartedMs = 0;
+uint32_t settingsSaveDueMs = 0;
 uint8_t thermalClipDurationSeconds = 3;
 char thermalClipBasePath[96] = {};
 uint32_t leptonLowPowerSinceMs = 0;
@@ -139,6 +142,12 @@ void recoverTouchAfterPowerPathChange(const BatteryStatus& status) {
   Serial.printf("Power source changed: source=%s external=%s; touch controller reinitialized\n",
                 powerSourceLabel(status.source),
                 status.externalPowerGood ? "yes" : "no");
+  if (!thermalClipRecording) {
+    const bool storageRecovered = storage.recover();
+    Serial.printf("Power source changed: TF card recovery %s\n", storageRecovered ? "ok" : "failed");
+  } else {
+    Serial.println("Power source changed: TF card recovery deferred during clip recording");
+  }
   ui.showStatus(status.source == PowerSource::Battery ? "Battery power" : "External power");
   needsRender = true;
 }
@@ -1293,13 +1302,27 @@ void loop() {
         if (previousSettings.soundVolume != settings.soundVolume) {
           sound.setVolume(settings.soundVolume);
         }
-        if (!settingsStore.save(settings)) {
-          Serial.println("Settings save failed after UI change");
-          ui.showStatus("Settings save failed");
-        }
+        pendingSettingsSave = true;
+        settingsSaveDueMs = millis() + kSettingsDeferredSaveMs;
       }
       lastUserActivityMs = millis();
       needsRender = true;
+    }
+  }
+
+  if (pendingSettingsSave &&
+      !touchActive &&
+      !ui.setupActive() &&
+      !thermalClipRecording &&
+      !softwarePowerOff &&
+      static_cast<int32_t>(millis() - settingsSaveDueMs) >= 0) {
+    pendingSettingsSave = false;
+    if (!settingsStore.save(settings)) {
+      Serial.println("Settings save failed after deferred UI change");
+      ui.showStatus("Settings save failed");
+      needsRender = true;
+    } else {
+      Serial.println("Settings saved after deferred UI change");
     }
   }
 

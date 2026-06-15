@@ -12,6 +12,8 @@ namespace {
 
 constexpr uint16_t kCaptureFooterHeight = 20;
 constexpr uint16_t kCaptureFooterHeightWithFilename = 28;
+constexpr int kTfSdMmcFrequency = SDMMC_FREQ_DEFAULT;
+constexpr uint8_t kTfMaxOpenFiles = 4;
 
 bool hasTraversal(const char* path) {
   return strstr(path, "..") != nullptr;
@@ -382,13 +384,28 @@ bool captureBaseExists(const char* basePath) {
 }  // namespace
 
 bool CaptureStorage::begin() {
+  return mountCard();
+}
+
+bool CaptureStorage::recover() {
+  Serial.println("TF card recovery: remounting SD_MMC");
+  closeThermalClipPlayback();
+  if (clipActive_) {
+    finishThermalClip();
+  }
+  SD_MMC.end();
+  delay(80);
+  return mountCard();
+}
+
+bool CaptureStorage::mountCard() {
   if (!SD_MMC.setPins(BoardPins::TF_CLK, BoardPins::TF_CMD, BoardPins::TF_D0)) {
     Serial.println("TF card pin setup failed");
     mounted_ = false;
     return false;
   }
 
-  mounted_ = SD_MMC.begin("/sdcard", true);
+  mounted_ = SD_MMC.begin("/sdcard", true, false, kTfSdMmcFrequency, kTfMaxOpenFiles);
   if (!mounted_) {
     Serial.println("TF card mount failed; capture disabled");
     return false;
@@ -400,7 +417,9 @@ bool CaptureStorage::begin() {
     return false;
   }
 
-  Serial.printf("TF card ready: %llu MB\n", SD_MMC.cardSize() / (1024 * 1024));
+  Serial.printf("TF card ready: %llu MB, SD_MMC freq=%d\n",
+                SD_MMC.cardSize() / (1024 * 1024),
+                kTfSdMmcFrequency);
   ensureSavePath("/flir");
   return true;
 }
@@ -418,6 +437,7 @@ bool CaptureStorage::ensureSavePath(const char* path) {
   }
 
   if (!SD_MMC.exists(path) && !SD_MMC.mkdir(path)) {
+    Serial.printf("TF card save path mkdir failed: %s\n", path);
     return false;
   }
 
@@ -425,9 +445,14 @@ bool CaptureStorage::ensureSavePath(const char* path) {
   snprintf(probePath, sizeof(probePath), "%s/.write_test", path);
   File probe = SD_MMC.open(probePath, FILE_WRITE);
   if (!probe) {
+    Serial.printf("TF card save path write probe open failed: %s\n", probePath);
     return false;
   }
-  probe.print("ok");
+  if (probe.print("ok") != 2) {
+    Serial.printf("TF card save path write probe failed: %s\n", probePath);
+    probe.close();
+    return false;
+  }
   probe.close();
   SD_MMC.remove(probePath);
   return true;
@@ -446,8 +471,11 @@ bool CaptureStorage::saveCapture(const AppSettings& settings,
     return false;
   }
   if (!ensureSavePath(settings.savePath)) {
-    Serial.println("Capture path validation failed");
-    return false;
+    Serial.println("Capture path validation failed; attempting TF card recovery");
+    if (!recover() || !ensureSavePath(settings.savePath)) {
+      Serial.println("Capture path validation failed after TF card recovery");
+      return false;
+    }
   }
 
   char basePath[96];
@@ -482,6 +510,8 @@ bool CaptureStorage::saveCapture(const AppSettings& settings,
   if (ok) {
     strncpy(lastBasePath_, basePath, sizeof(lastBasePath_) - 1);
     lastBasePath_[sizeof(lastBasePath_) - 1] = '\0';
+  } else {
+    Serial.printf("Capture failed: base=%s mounted=%s\n", basePath, mounted_ ? "yes" : "no");
   }
   return ok;
 }
@@ -494,8 +524,11 @@ bool CaptureStorage::beginThermalClip(const AppSettings& settings, char* savedBa
     finishThermalClip();
   }
   if (!ensureSavePath(settings.savePath)) {
-    Serial.println("Clip path validation failed");
-    return false;
+    Serial.println("Clip path validation failed; attempting TF card recovery");
+    if (!recover() || !ensureSavePath(settings.savePath)) {
+      Serial.println("Clip path validation failed after TF card recovery");
+      return false;
+    }
   }
 
   char basePath[96];
@@ -510,6 +543,7 @@ bool CaptureStorage::beginThermalClip(const AppSettings& settings, char* savedBa
   clipFile_ = SD_MMC.open(clipPath, FILE_WRITE);
   if (!clipFile_) {
     Serial.printf("Thermal clip open failed: %s\n", clipPath);
+    recover();
     return false;
   }
 
@@ -1016,13 +1050,21 @@ bool CaptureStorage::loadCaptureBmpScaled(const char* basePath,
 bool CaptureStorage::writeRaw(const char* path, const uint16_t* raw14, size_t pixelCount) {
   File file = SD_MMC.open(path, FILE_WRITE);
   if (!file) {
+    Serial.printf("Raw capture open failed: %s\n", path);
     return false;
   }
   const size_t written = file.write(reinterpret_cast<const uint8_t*>(raw14), pixelCount * sizeof(uint16_t));
   yield();
   file.flush();
   file.close();
-  return written == pixelCount * sizeof(uint16_t);
+  const bool ok = written == pixelCount * sizeof(uint16_t);
+  if (!ok) {
+    Serial.printf("Raw capture write short: %s written=%u expected=%u\n",
+                  path,
+                  static_cast<unsigned>(written),
+                  static_cast<unsigned>(pixelCount * sizeof(uint16_t)));
+  }
+  return ok;
 }
 
 bool CaptureStorage::writeBmp24(const char* path,
@@ -1034,6 +1076,7 @@ bool CaptureStorage::writeBmp24(const char* path,
                                 const char* basePath) {
   File file = SD_MMC.open(path, FILE_WRITE);
   if (!file) {
+    Serial.printf("BMP capture open failed: %s\n", path);
     return false;
   }
 
@@ -1191,10 +1234,11 @@ bool CaptureStorage::writeBmp24(const char* path,
       row[offset++] = 0;
     }
     if (file.write(row, rowSize) != rowSize) {
+      Serial.printf("BMP capture row write failed: %s y=%ld\n", path, static_cast<long>(y));
       file.close();
       return false;
     }
-    if ((y & 0x0F) == 0) {
+    if ((y & 0x03) == 0) {
       yield();
     }
   }

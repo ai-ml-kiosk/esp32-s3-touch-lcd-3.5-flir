@@ -9,6 +9,7 @@
 class CaptureStorage {
  public:
   bool begin();
+  bool recover();
   bool isMounted() const { return mounted_; }
   bool validateSavePath(const char* path) const;
   bool ensureSavePath(const char* path);
@@ -46,6 +47,7 @@ class CaptureStorage {
   bool loadCaptureBmpScaled(const char* basePath, uint16_t* out, uint16_t outWidth, uint16_t outHeight) const;
 
  private:
+  bool mountCard();
   bool writeRaw(const char* path, const uint16_t* raw14, size_t pixelCount);
   bool writeBmp24(const char* path,
                   const uint16_t* rgb565,
